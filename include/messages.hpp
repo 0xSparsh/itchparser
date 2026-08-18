@@ -120,54 +120,149 @@ struct OperationHaltMessage {
 };
 
 struct AddOrderMessage {
-
+    MessageType messageType = 'A';
+    StockLocate stockLocate;
+    TrackingNumber trackingNumber;
+    Timestamp timestamp;
+    OrderReferenceNumber orderReferenceNumber;
+    BuySellIndicator buySellIndicator;
+    Shares shares;
+    Stock stock;
+    Price price;
 };
 
 struct AddOrderMPIDAttribution {
-
+    MessageType messageType = 'F';
+    StockLocate stockLocate;
+    TrackingNumber tracingNumber;
+    Timestamp timestamp;
+    OrderReferenceNumber orderReferenceNumber;
+    BuySellIndicator buySellIndicator;
+    Shares shares;
+    Stock stock;
+    Price price;
+    Attribution attribution;
 };
 
 struct OrderExecutedMessage {
-
+    MessageType messageType = 'E';
+    StockLocate stockLocate;
+    TrackingNumber trackingNumber;
+    Timestamp timestamp;
+    OrderReferenceNumber orderReferenceNumber;
+    ExecutedShares executedShares;
+    MatchNumber matchNumber;
 };
 
 struct OrderExecutedWithPriceMessage {
-
-};
+    MessageType messageType = 'C';
+    StockLocate stockLocate;
+    TrackingNumber trackingNumber;
+    Timestamp timestamp;
+    OrderReferenceNumber orderReferenceNumber;
+    ExecutedShares executedShares;
+    MatchNumber matchNumber;
+    Printable printable;
+    ExecutionPrice executionPrice;
+};  
 
 struct OrderCancelMessage {
-
+    MessageType messageType = 'X';
+    StockLocate stockLocate;
+    TrackingNumber trackingNumber;
+    OrderReferenceNumber orderReferenceNumber;
+    CancelledShares cancelledShares;
 };
 
 struct OrderDeleteMessgae {
-
+    MessageType messageType = 'D';
+    StockLocate stockLocate;
+    TrackingNumber trackingNumber;
+    Timestamp timestamp;
+    OrderReferenceNumber orderReferenceNumber;
 };
 
 struct OrderReplaceMessage {
-
+    MessageType messageType = 'U';
+    StockLocate stockLocate;
+    TrackingNumber trackingNumber;
+    Timestamp timestamp;
+    OrderReferenceNumber orderReferenceNumber;
+    NewOrderReferenceNumber newOrderReferenceNumber;
+    Shares shares;
+    Price price;
 };
 
 struct NonCrossTradeMessage {
-
+    MessageType messageType = 'P';
+    StockLocate stockLocate;
+    TrackingNumber tracingNumber;
+    Timestamp timestamp;
+    OrderReferenceNumber orderReferenceNumber;
+    BuySellIndicator buySellIndicator;
+    Shares shares;
+    Stock stock;
+    Price price;
+    MatchNumber matchNumber;
 };
 
 struct CrossTradeMessage {
-
+    MessageType messageType = 'Q';
+    StockLocate stockLocate;
+    TrackingNumber tracingNumber;
+    Timestamp timestamp;
+    Shares shares;
+    Stock stock;
+    CrossPrice crossPrice;
+    MatchNumber matchNumber;
+    CrossType crossType;
 };
 
 struct BrokenTradeMessage {
-
+    MessageType messageType = 'B';
+    StockLocate stockLocate;
+    TrackingNumber trackingNumber;
+    Timestamp timestamp;
+    MatchNumber matchNumber;
 };
 
 struct NOIIMessage {
-
+    MessageType messageType = 'I';
+    StockLocate stockLocate;
+    TrackingNumber trackingNumber;
+    Timestamp timestamp;
+    PairedShares pairedShares;
+    ImbalanceShares imbalanceShares;
+    ImbalanceDirection imbalanceDirection;
+    Stock stock;
+    FarPrice farPrice;
+    NearPrice nearPrice;
+    CurrentReferencePrice currentReferencePrice;
+    CrossType crossType;
+    PriceVariationIndicator priceVariationIndicator;
 };
 
 struct RetailPriceImprovementIndicatorMessage {
-
+    MessageType messageType = 'N';
+    StockLocate stockLocate;
+    TrackingNumber trackingNumber;
+    Timestamp timestamp;
+    Stock stock;
+    InterestFlag interestFlag;
 };
 
 struct DLCRMessage {
-
+    MessageType messageType = 'O';
+    StockLocate stockLocate;
+    TrackingNumber trackingNumber;
+    Timestamp timestamp;
+    Stock stock;
+    OpenEligibilityStatus openEligibilityStatus;
+    MinimumAllowablePrice minimumAllowablePrice;
+    MaximumAllowablePrice maximumAllowablePrice;
+    NearExecutionPrice nearExecutionPrice;
+    NearExecutionTime nearExecutionTime;
+    LowerPriceRangeCollar lowerPriceRangeCollar;
+    UpperPriceRangeCollar UpperPriceRangeCollar;
 };
 

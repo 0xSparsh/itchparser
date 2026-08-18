@@ -23,6 +23,27 @@ using AuctionCollarReferencePrice = uint32_t;
 using UpperAuctionCollarPrice = uint32_t;
 using LowerAuctionCollarPrice = uint32_t;
 using AuctionCollarExtension = uint32_t;
+using OrderReferenceNumber = uint64_t;
+using Shares = uint32_t;
+using Price = uint32_t;
+using Attribution = char[4];
+using ExecutedShares = uint32_t;
+using MatchNumber = uint64_t;
+using ExecutionPrice = uint32_t;
+using CancelledShares = uint32_t;
+using NewOrderReferenceNumber = uint64_t;
+using CrossPrice = uint32_t;
+using PairedShares = uint64_t;
+using ImbalanceShares = uint64_t;
+using FarPrice = uint32_t;
+using NearPrice = uint32_t;
+using CurrentReferencePrice = uint32_t;
+using MinimumAllowablePrice = uint32_t;
+using MaximumAllowablePrice = uint32_t;
+using NearExecutionPrice = uint32_t;
+using NearExecutionTime = uint64_t;
+using LowerPriceRangeCollar = uint32_t;
+using UpperPriceRangeCollar = uint32_t;
 
 enum class EventCode : char {
     MessagesStart = 'O',
@@ -164,3 +185,55 @@ enum class OperationHaltAction : char {
     Resumed = 'T'
 };
 
+enum class BuySellIndicator : char {
+    BuyOrder = 'B',
+    SellOrder = 'S'
+};
+
+enum class Printable : char {
+    Yes = 'Y',
+    No = 'N'
+};
+
+enum class CrossType : char {
+    Opening = 'O',
+    Closing = 'C',
+    Halted = 'H'
+};
+
+enum class ImbalanceDirection : char {
+    BuyImbalance = 'B',
+    SellImbalance = 'S',
+    NoImbalance = 'N',
+    Insufficient = 'O',
+    Paused = 'P'
+};
+
+enum class PriceVariationIndicator : char {
+    LessThan1Percent = 'L',
+    OneTo1_99Percent = '1',
+    TwoTo2_99Percent = '2',
+    ThreeTo3_99Percent = '3',
+    FourTo4_99Percent = '4',
+    FiveTo5_99Percent = '5',
+    SixTo6_99Percent = '6',
+    SevenTo7_99Percent = '7',
+    EightTo8_99Percent = '8',
+    NineTo9_99Percent = '9',
+    TenTo19_99Percent = 'A',
+    TwentyTo29_99Percent = 'B',
+    ThirtyPercentOrGreater = 'C',
+    CannotBeCalculated = ' '
+};
+
+enum class InterestFlag : char {
+    BuySide = 'B',
+    SellSide = 'S',
+    BothSides = 'A',
+    None = 'N'
+};
+
+enum class OpenEligibilityStatus : char {
+    Eligible = 'Y',
+    NotEligible = 'N'
+};
