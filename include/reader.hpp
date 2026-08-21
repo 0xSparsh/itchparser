@@ -7,9 +7,9 @@ public:
     
     ~MMapFile();
 
-    MMapFile(const MMapFile& other);
+    MMapFile(const MMapFile& other) = delete;
 
-    MMapFile& operator=(const MMapFile& other);
+    MMapFile& operator=(const MMapFile& other) = delete;
 
     MMapFile(MMapFile&& other);
 

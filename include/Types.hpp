@@ -1,19 +1,20 @@
 #pragma once
 
 #include<cstdint>
+#include<array>
 
 using MessageType = char;
 using StockLocate = uint16_t;
 using TrackingNumber = uint16_t;
 using Timestamp = uint64_t;
-using Stock = char[8];
+using Stock = std::array<char,8>;
 using RoundLotSize = uint32_t;
 using IssueClassification = char;
-using IssueSubType = char[2];
+using IssueSubType = std::array<char,2>;
 using ETPLeverageFactor = uint32_t;
 using Reserved = char;
-using Reason = char[4];
-using MPID = char[4];
+using Reason = std::array<char,4>;
+using MPID = std::array<char,4>;
 using Level1 = uint64_t;
 using Level2 = uint64_t;
 using Level3 = uint64_t;
@@ -26,7 +27,7 @@ using AuctionCollarExtension = uint32_t;
 using OrderReferenceNumber = uint64_t;
 using Shares = uint32_t;
 using Price = uint32_t;
-using Attribution = char[4];
+using Attribution = std::array<char,4>;
 using ExecutedShares = uint32_t;
 using MatchNumber = uint64_t;
 using ExecutionPrice = uint32_t;
@@ -152,7 +153,7 @@ enum class MarketMakerMode : char {
     Passive = 'P',
     Syndicate = 'S',
     PreSyndicate = 'R',
-    Penalty = 'P'
+    Penalty = 'L'
 };
 
 enum class MarketParticipantState : char {
@@ -236,4 +237,8 @@ enum class InterestFlag : char {
 enum class OpenEligibilityStatus : char {
     Eligible = 'Y',
     NotEligible = 'N'
+};
+
+enum class IssueSubTypeValues : char {
+
 };

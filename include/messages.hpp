@@ -24,6 +24,7 @@ struct StockDirectoryMessage {
     MarketCategory marketCategory;
     FinancialStatusIndicator financialStatusIndicator;
     RoundLotSize roundLotSize;
+    RoundLotsOnly roundLotsOnly;
     IssueClassification issueClassification;
     IssueSubType issueSubType;
     Authenticity authenticity;
@@ -39,6 +40,7 @@ struct StockTradingAction {
     MessageType messageType = 'H';
     StockLocate stockLocate;
     TrackingNumber trackingNumber;
+    Timestamp timestamp;
     Stock stock;
     TradingState tradingState;
     Reserved reserved;
@@ -134,7 +136,7 @@ struct AddOrderMessage {
 struct AddOrderMPIDAttribution {
     MessageType messageType = 'F';
     StockLocate stockLocate;
-    TrackingNumber tracingNumber;
+    TrackingNumber trackingNumber;
     Timestamp timestamp;
     OrderReferenceNumber orderReferenceNumber;
     BuySellIndicator buySellIndicator;
@@ -170,11 +172,12 @@ struct OrderCancelMessage {
     MessageType messageType = 'X';
     StockLocate stockLocate;
     TrackingNumber trackingNumber;
+    Timestamp timestamp;
     OrderReferenceNumber orderReferenceNumber;
     CancelledShares cancelledShares;
 };
 
-struct OrderDeleteMessgae {
+struct OrderDeleteMessage {
     MessageType messageType = 'D';
     StockLocate stockLocate;
     TrackingNumber trackingNumber;
@@ -196,7 +199,7 @@ struct OrderReplaceMessage {
 struct NonCrossTradeMessage {
     MessageType messageType = 'P';
     StockLocate stockLocate;
-    TrackingNumber tracingNumber;
+    TrackingNumber trackingNumber;
     Timestamp timestamp;
     OrderReferenceNumber orderReferenceNumber;
     BuySellIndicator buySellIndicator;
@@ -209,7 +212,7 @@ struct NonCrossTradeMessage {
 struct CrossTradeMessage {
     MessageType messageType = 'Q';
     StockLocate stockLocate;
-    TrackingNumber tracingNumber;
+    TrackingNumber trackingNumber;
     Timestamp timestamp;
     Shares shares;
     Stock stock;
@@ -263,6 +266,6 @@ struct DLCRMessage {
     NearExecutionPrice nearExecutionPrice;
     NearExecutionTime nearExecutionTime;
     LowerPriceRangeCollar lowerPriceRangeCollar;
-    UpperPriceRangeCollar UpperPriceRangeCollar;
+    UpperPriceRangeCollar upperPriceRangeCollar;
 };
 
