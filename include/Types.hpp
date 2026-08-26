@@ -4,41 +4,56 @@
 #include<array>
 
 using MessageType = char;
+
 using StockLocate = uint16_t;
 using TrackingNumber = uint16_t;
 using Timestamp = uint64_t;
+
 using Stock = std::array<char,8>;
+
 using RoundLotSize = uint32_t;
 using IssueClassification = char;
 using IssueSubType = std::array<char,2>;
 using ETPLeverageFactor = uint32_t;
+
 using Reserved = char;
 using Reason = std::array<char,4>;
 using MPID = std::array<char,4>;
+
 using Level1 = uint64_t;
 using Level2 = uint64_t;
 using Level3 = uint64_t;
-using IPOQuotationReleaseTime = uint64_t;
+
+using IPOQuotationReleaseTime = uint32_t;
 using IPOPrice = uint32_t;
+
 using AuctionCollarReferencePrice = uint32_t;
 using UpperAuctionCollarPrice = uint32_t;
 using LowerAuctionCollarPrice = uint32_t;
 using AuctionCollarExtension = uint32_t;
+
 using OrderReferenceNumber = uint64_t;
 using Shares = uint32_t;
 using Price = uint32_t;
+
 using Attribution = std::array<char,4>;
+
 using ExecutedShares = uint32_t;
 using MatchNumber = uint64_t;
 using ExecutionPrice = uint32_t;
+
 using CancelledShares = uint32_t;
 using NewOrderReferenceNumber = uint64_t;
+
 using CrossPrice = uint32_t;
+
 using PairedShares = uint64_t;
 using ImbalanceShares = uint64_t;
+
 using FarPrice = uint32_t;
 using NearPrice = uint32_t;
 using CurrentReferencePrice = uint32_t;
+
 using MinimumAllowablePrice = uint32_t;
 using MaximumAllowablePrice = uint32_t;
 using NearExecutionPrice = uint32_t;
