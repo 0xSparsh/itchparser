@@ -60,7 +60,7 @@ MMapFile::MMapFile(const char* path) noexcept {
     void* p = mmap(nullptr, size_, PROT_READ, MAP_PRIVATE | MAP_NORESERVE, fd_, 0);
 
     if (p == MAP_FAILED) {
-        log_syserr("mmap" errno);
+        log_syserr("mmap", errno);
         ::close(fd_);
         fd_ = -1;
         return;
@@ -85,7 +85,7 @@ MMapFile& MMapFile::operator=(MMapFile&& other) noexcept {
 
         // Take ownership of other's resources
         data_ = other.data_;
-        size_ = other.size;
+        size_ = other.size_;
         fd_ = other.fd_;
 
         // Empty the source object
@@ -102,7 +102,7 @@ void MMapFile::release() noexcept {
         data_ = nullptr;
     }
 
-    if (fd >= 0) {
+    if (fd_ >= 0) {
         ::close(fd_);
         fd_ = -1;
     }
@@ -125,7 +125,7 @@ void MMapFile::advise_sequential() const noexcept {
 #endif
 }
 
-std::size_t MMapFile::prefault() {
+std::size_t MMapFile::prefault() const noexcept {
     if (!data_) [[unlikely]] return 0;
 
     // 4096 is typical linux page size
@@ -133,7 +133,7 @@ std::size_t MMapFile::prefault() {
     std::size_t touched = 0;
 
     for (std::size_t off = 0; off < size_; off += kPage) {
-        volatile std::byte b = data[off];
+        volatile std::byte b = data_[off];
         (void)b;
         touched += kPage;
     }

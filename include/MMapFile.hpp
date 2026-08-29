@@ -20,10 +20,10 @@ public:
     MMapFile(MMapFile&& other);
     MMapFile& operator=(MMapFile&& other);
 
-    [[no_discard]] const std::byte* data() const noexcept { return data_; }
-    [[no_discard]] std::size_t size() const noexcept { return size_; }
-    [[no_discard]] bool valid() const noexcept { return data != nullptr; }
-    [[no_discard]] std::span<const std::byte> span() const noexcept {
+    [[nodiscard]] const std::byte* data() const noexcept { return data_; }
+    [[nodiscard]] std::size_t size() const noexcept { return size_; }
+    [[nodiscard]] bool valid() const noexcept { return data != nullptr; }
+    [[nodiscard]] std::span<const std::byte> span() const noexcept {
         return {data_, size_};
     }
 

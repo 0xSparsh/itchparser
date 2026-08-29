@@ -3,6 +3,8 @@
 #include<cstdint>
 #include<array>
 
+namespace itch {
+
 using MessageType = char;
 
 using StockLocate = uint16_t;
@@ -254,6 +256,24 @@ enum class OpenEligibilityStatus : char {
     NotEligible = 'N'
 };
 
-enum class IssueSubTypeValues : char {
-
+enum class IssueClassificationValue : char {
+    AmericanDepositaryShare = 'A',  // ADS
+    Bond                    = 'B',
+    CommonStock             = 'C',
+    DepositoryReceipt       = 'F',
+    Rule144A                = 'I',
+    LimitedPartnership      = 'L',
+    Notes                   = 'N',
+    OrdinaryShare           = 'O',
+    PreferredStock          = 'P',
+    OtherSecurities         = 'Q',
+    Right                   = 'R',
+    SharesOfBeneficialInterest = 'S',
+    ConvertibleDebenture    = 'T',
+    Unit                    = 'U',
+    UnitsBeneficialInterest = 'V',
+    Warrant                 = 'W',
+    NotAvailable            = ' ',  // space — for non-Nasdaq listed
 };
+
+} // namespace itch 
