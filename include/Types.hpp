@@ -273,7 +273,22 @@ enum class IssueClassificationValue : char {
     Unit                    = 'U',
     UnitsBeneficialInterest = 'V',
     Warrant                 = 'W',
-    NotAvailable            = ' ',  // space — for non-Nasdaq listed
+    NotAvailable            = ' ',  // space - for non-Nasdaq listed
 };
+
+enum class Side : uint8_t {
+    Buy = '0',
+    Sell = '1'
+};
+
+[[nodiscard]] constexpr Side to_side(BuySellIndicator bsi) noexcept {
+    return (static_cast<char>(bsi) == 'B')
+        ? Side::Buy
+        : Side::Sell;
+}
+
+// Cache line size on a x86-64
+// Used to align hot structures so that adjacent objects do not suffer false sharing.
+constexpr std::size_t kCacheLineSize = 64;
 
 } // namespace itch 
