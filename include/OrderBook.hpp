@@ -26,7 +26,7 @@ namespace itch {
 template <typename KeyT, typename ValueT,
            std::size_t kCapacity, KeyT kEmpty>
 class FlatHashMap {
-    static_assert(kCapacity & (kCapacity - 1) == 0,
+    static_assert((kCapacity & (kCapacity - 1)) == 0,
                   "kCapacity must be a power of 2");
 public:
 

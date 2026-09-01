@@ -287,6 +287,10 @@ enum class Side : uint8_t {
         : Side::Sell;
 }
 
+// StockLocate is uint16_t so the full range of value gives us 65536
+// possible instruments for direct indexing
+inline constexpr std::size_t kMaxInstruments = 65536;   
+
 // Cache line size on a x86-64
 // Used to align hot structures so that adjacent objects do not suffer false sharing.
 constexpr std::size_t kCacheLineSize = 64;
