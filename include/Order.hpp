@@ -41,7 +41,7 @@ struct alignas(kCacheLineSize) Order {
         return shares_remaining == 0;
     }
 
-    bool cancel(Shares qty) noexcept {
+    bool reduce(Shares qty) noexcept {
         if (qty >= shares_remaining) [[unlikely]] {
             shares_remaining = 0;
             return true;
