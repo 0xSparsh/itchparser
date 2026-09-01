@@ -5,9 +5,9 @@ project(itch_parser)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_executable(itch_parser
-    src/main.cpp
-)
+file(GLOB SOURCES CONFIGURE_DEPENDS src/*.cpp)
+
+add_executable(itch_parser ${SOURCES})
 
 target_include_directories(itch_parser PRIVATE
     include

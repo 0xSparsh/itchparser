@@ -17,12 +17,12 @@ public:
     MMapFile(const MMapFile& other) = delete;
     MMapFile& operator=(const MMapFile& other) = delete;
 
-    MMapFile(MMapFile&& other);
-    MMapFile& operator=(MMapFile&& other);
+    MMapFile(MMapFile&& other) noexcept;
+    MMapFile& operator=(MMapFile&& other) noexcept;
 
     [[nodiscard]] const std::byte* data() const noexcept { return data_; }
     [[nodiscard]] std::size_t size() const noexcept { return size_; }
-    [[nodiscard]] bool valid() const noexcept { return data != nullptr; }
+    [[nodiscard]] bool valid() const noexcept { return data_ != nullptr; }
     [[nodiscard]] std::span<const std::byte> span() const noexcept {
         return {data_, size_};
     }

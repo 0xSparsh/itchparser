@@ -7,6 +7,8 @@
 
 #include"Types.hpp"
 
+namespace itch {
+
 struct SystemEventMessage {
     MessageType messageType = 'S';      // Always "S" 
     StockLocate stockLocate;            // Always 0 for system wide messages
@@ -268,4 +270,6 @@ struct DLCRMessage {
     LowerPriceRangeCollar lowerPriceRangeCollar;
     UpperPriceRangeCollar upperPriceRangeCollar;
 };
+
+} // namespace itch
 
