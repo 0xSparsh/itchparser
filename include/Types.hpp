@@ -291,6 +291,10 @@ enum class Side : uint8_t {
 // possible instruments for direct indexing
 inline constexpr std::size_t kMaxInstruments = 65536;   
 
+// Fixed Pool capacities used by Matching Engine
+inline constexpr std::size_t kOrderPoolSize = 1u << 24;         // 2^24
+inline constexpr std::size_t kPriceLevelPoolSize = 1u << 22;    // 2^22
+
 // Cache line size on a x86-64
 // Used to align hot structures so that adjacent objects do not suffer false sharing.
 constexpr std::size_t kCacheLineSize = 64;

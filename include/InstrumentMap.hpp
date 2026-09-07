@@ -27,7 +27,7 @@ struct Instrument {
     RoundLotSize                roundLotSize{100};
     RoundLotsOnly               roundLotsOnly{RoundLotsOnly::No};
     Authenticity                authenticity{Authenticity::Production};
-    ShortScaleThresholdIndicator schortScale{ShortScaleThresholdIndicator::NotRestricted};
+    ShortScaleThresholdIndicator shortScale{ShortScaleThresholdIndicator::NotRestricted};
     IPOFlag                     ipoFlag{IPOFlag::NotAvailable};
     LULDReferencePriceTier      luldTier{LULDReferencePriceTier::NotAvailable};
     ETPFlag                     etpFlag{ETPFlag::NotAvailable};
