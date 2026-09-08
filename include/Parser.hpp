@@ -19,17 +19,57 @@ class Parser {
 public:
     Parser() noexcept = default;
 
-    std::size_t run(const std::byte* buf, std::size_t len, 
-                    MatchingEngine& engine, Stats& stats) noexcept {}
+    std::size_t run(const std::byte* buf, std::size_t len,
+                    MatchingEngine& engine, Stats& stats) {
+        const std::byte* p   = buf;
+        const std::byte* end = buf + len;
+
+        while (p + 2 <= end) {
+            // Read 2-byte big-endian payload length 
+            const std::uint16_t payload_len = itch::load_be16(p);
+            p += 2;
+
+            // Bounds-check: payload must fit in remaining buffer 
+            if (p + payload_len > end) [[unlikely]] {
+                // Truncated trailing message
+                stats.on_parse_error();
+                break;
+            }
+
+            // Guard zero-length payload (no type byte to read)
+            // A zero length prefix carries no message type; reading *p
+            // would misinterpret the next message's length byte as a type
+            // and desync framing. Count and skip without dispatch.
+            if (payload_len == 0) [[unlikely]] {
+                stats.on_parse_error();
+                continue;
+            }
+
+            // Decode the message type (first byte of payload)
+            const char type = static_cast<char>(*p);
+
+            // Dispatch
+            // We pass the payload pointer (p) and the payload_len so each
+            // handler can validate the length matches the expected wire
+            // size for its type. If the length doesn't match we treat it
+            // as a truncated/corrupt message and skip it.
+            dispatch(type, p, payload_len, engine, stats);
+
+            // ---- 6. Advance past the payload ----
+            p += payload_len;
+        }
+
+        return static_cast<std::size_t>(p - buf);
+    }
 
 private:
     // Dispatch on message type. Using a switch rather than a function
     // pointer table because the compiler can inline the handlers
     // when it sees the call sites are small and the branch predictor
     // learns the message type distribution at run time 
-    static void dispatch(char type, std::byte* payload,
+    static void dispatch(char type, const std::byte* payload,
                          std::uint16_t payload_len,
-                         MatchingEngine& engine, Stats& stats) noexcept {
+                         MatchingEngine& engine, Stats& stats) {
         stats.on_message(type, payload_len);
 
         switch (type) {

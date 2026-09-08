@@ -67,7 +67,7 @@ struct Stats {
         return std::chrono::duration<double>(end_time - start_time).count();
     }
 
-    [[nodsicard]] double msgs_per_sec() const noexcept {
+    [[nodiscard]] double msgs_per_sec() const noexcept {
         const double s = elapsed_seconds();
         return (s > 0.0) ? static_cast<double>(total_messages) / s : 0.0;
     }
@@ -137,7 +137,7 @@ struct Stats {
             if (rows[i].count == 0) break;
 
             const char tag = static_cast<char>(rows[i].type);
-            const char pct = (total_messages > 0) 
+            const double pct = (total_messages > 0)
                 ? 100.0 * static_cast<double>(rows[i].count)
                         / static_cast<double>(total_messages) : 0.0;
 

@@ -93,12 +93,23 @@ public:
         Instrument* p = new (mem) Instrument{};
         p->locate = locate;
         slots_[locate] = p;
+        ++count_;
         return p;
     }
 
     // Number of distinct instruments currently registered
     [[nodiscard]] std::size_t size() const noexcept {
         return count_;
+    }
+
+    // Walk every registered Instrument. Used by the matching engine for
+    // end-of-day shutdown (to release any residual state). The callback
+    // may not mutate the map.
+    template <typename Fn>
+    void for_each(Fn&& fn) const {
+        for (Instrument* p : slots_) {
+            if (p) fn(p);
+        }
     }
 
 private:

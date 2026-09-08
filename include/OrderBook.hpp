@@ -35,7 +35,7 @@ public:
     // The values_ vector will be of capacity of size = kCapacity and the values will be initialized to nullptr
     FlatHashMap() noexcept
         : keys_(kCapacity, kEmpty)
-        , values_(kcapacity, nullptr)
+        , values_(kCapacity, nullptr)
     {}
 
     bool insert(KeyT k, ValueT v) noexcept {
@@ -120,14 +120,14 @@ public:
     }
 
 private:
-    static constexpr KeyT hash(KeyT k) noexcept {
+    static constexpr std::uint64_t hash(KeyT k) noexcept {
         std::uint64_t x = static_cast<std::uint64_t>(k);
         x ^= x >> 33;
         x *= 0xff51afd7ed558ccdULL;
         x ^= x >> 33;
         x *= 0xc4ceb9fe1a85ec53ULL;
         x ^= x >> 33;
-        return static_cast<KeyT>(x);
+        return x;
     }
 
     std::vector<KeyT>    keys_;
@@ -153,70 +153,87 @@ public:
     OrderBook& operator=(const OrderBook&) = delete;
 
     // Add a resting order.
-    bool add_order(Order* o, MemoryPool<PriceLevel>& level_pool) {
+    // Returns 0 on failure (level pool exhausted),
+    // 1 if added to an existing level,
+    // 2 if a new level was created.
+    int add_order(Order* o, MemoryPool<PriceLevel>& level_pool) {
         const Side  s  = o->side;
         const Price px = o->price_cents;
 
         PriceLevel* lvl = find_level(s, px);
+        bool created = false;
         if (!lvl) [[unlikely]] {
             lvl = level_pool.acquire();
             if (!lvl) [[unlikely]] {
-                return false;
+                return 0;
             }
 
             new (lvl) PriceLevel{};
             lvl->reset(px, s);
             insert_level_sorted(s, lvl);
             insert_level_into_map(s, lvl);
+            created = true;
         }
 
         lvl->push_back(o);
         ++live_order_count_;
-        return true;
+        return created ? 2 : 1;
     }
 
     // Apply a partial fill.
-    bool execute_order(Order* o, Shares qty,
+    // Returns -1 if the level is missing,
+    // 0 if partially filled (order still live),
+    // 1 if fully filled and level remains,
+    // 2 if fully filled and level was removed.
+    int execute_order(Order* o, Shares qty,
                        MemoryPool<PriceLevel>& level_pool) noexcept {
         PriceLevel* lvl = find_level(o->side, o->price_cents);
-        if (!lvl) [[unlikely]] return false;
+        if (!lvl) [[unlikely]] return -1;
 
         const Shares filled = (qty >= o->shares_remaining)
                             ? o->shares_remaining : qty;
         lvl->total_shares -= filled;
         const bool now_dead = o->reduce(qty);
 
-        if (now_dead) {
-            lvl->unlink(o);
-            --live_order_count_;
-            if (lvl->empty()) {
-                remove_level_from_list(o->side, lvl);
-                erase_level_from_map(o->side, lvl);
-                level_pool.release(lvl);
-            }
+        if (!now_dead) {
+            return 0;
+        }
+        lvl->unlink(o);
+        --live_order_count_;
+        if (lvl->empty()) {
+            remove_level_from_list(o->side, lvl);
+            erase_level_from_map(o->side, lvl);
+            level_pool.release(lvl);
+            return 2;
         }
 
-        return now_dead;
+        return 1;
     }
 
     // Cancel uses the same logic as execute.
-    bool cancel_order(Order* o, Shares qty,
+    int cancel_order(Order* o, Shares qty,
                       MemoryPool<PriceLevel>& level_pool) noexcept {
         return execute_order(o, qty, level_pool);
     }
 
     // Remove an order completely.
-    void remove_order(Order* o, MemoryPool<PriceLevel>& level_pool) noexcept {
+    // Returns 0 if the level is missing,
+    // 1 if removed and level remains,
+    // 2 if removed and level was removed.
+    int remove_order(Order* o, MemoryPool<PriceLevel>& level_pool) noexcept {
         PriceLevel* lvl = find_level(o->side, o->price_cents);
-        if (lvl) {
-            lvl->unlink_and_deduct(o);
-            --live_order_count_;
-            if (lvl->empty()) {
-                remove_level_from_list(o->side, lvl);
-                erase_level_from_map(o->side, lvl);
-                level_pool.release(lvl);
-            }
+        if (!lvl) [[unlikely]] {
+            return 0;
         }
+        lvl->unlink_and_deduct(o);
+        --live_order_count_;
+        if (lvl->empty()) {
+            remove_level_from_list(o->side, lvl);
+            erase_level_from_map(o->side, lvl);
+            level_pool.release(lvl);
+            return 2;
+        }
+        return 1;
     }
 
     [[nodiscard]] Price best_bid_price() const noexcept {

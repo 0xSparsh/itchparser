@@ -31,6 +31,15 @@ class MemoryPool {
 
 public:
 
+    MemoryPool(const MemoryPool&) = delete;
+    MemoryPool& operator=(const MemoryPool&) = delete;
+    MemoryPool(MemoryPool&&) = delete;
+    MemoryPool& operator=(MemoryPool&&) = delete;
+
+    ~MemoryPool() {
+        ::operator delete[](storage_, std::align_val_t{alignof(T)});
+    }
+
     // Create a pool containing 'capacity' slots.
     explicit MemoryPool(std::size_t capacity)
         : capacity_(capacity)

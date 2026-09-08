@@ -102,7 +102,7 @@ public:
 
     [[nodiscard]] std::size_t size() const noexcept { return count_; }
     [[nodiscard]] std::size_t overflow_size() const noexcept { return overflow_.size(); }
-    [[nodiscard]] std::uint64_t collison() const noexcept { return collisions_; }
+    [[nodiscard]] std::uint64_t collisions() const noexcept { return collisions_; }
     static constexpr std::size_t capacity() noexcept { return kCapacity; }
 
 private:

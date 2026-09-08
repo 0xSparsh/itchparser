@@ -78,7 +78,7 @@ struct PriceLevel {
     }
 
     void unlink_and_deduct(Order* o) noexcept {
-        total_shares = o->shares_remaining;
+        total_shares -= o->shares_remaining;
         unlink(o);
     }
 
