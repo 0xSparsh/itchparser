@@ -138,7 +138,7 @@ private:
 // Per-instrument resting state.
 class OrderBook {
 public:
-    static constexpr std::size_t kPriceLevelMapCapacity = 1u << 12;
+    static constexpr std::size_t kPriceLevelMapCapacity = 1u << 13;
 
     static constexpr Price   kEmptyPrice   = static_cast<Price>(-1);
     static constexpr OrderReferenceNumber kEmptyOrderId =
