@@ -22,7 +22,7 @@ TEST(Bswap, Bswap32) {
     EXPECT_EQ(bswap32(bswap32(0xDEADBEEFu)), 0xDEADBEEFu);
     EXPECT_EQ(bswap32(0x00000000u), 0x00000000u);
     EXPECT_EQ(bswap32(0xFFFFFFFFu), 0xFFFFFFFFu);
-    EXPECT_EQ(bswap32(0x00000001u), 0x10000000u);
+    EXPECT_EQ(bswap32(0x00000001u), 0x01000000u);
 }
 
 TEST(Bswap, Bswap64) {
