@@ -2,6 +2,8 @@
 
 #include "Types.hpp"
 
+#include <utility>
+
 namespace itch {
 namespace {
 
@@ -15,8 +17,8 @@ TEST(Types, ToSideMapping) {
 TEST(Types, SideWireEncoding) {
     // NOTE: in this codebase Side carries the wire values '0'/'1',
     // unlike a 0/1 array index. Pinned to the actual definition.
-    EXPECT_EQ(static_cast<std::uint8_t>(Side::Buy), static_cast<std::uint8_t>('0'));
-    EXPECT_EQ(static_cast<std::uint8_t>(Side::Sell), static_cast<std::uint8_t>('1'));
+    EXPECT_EQ(std::to_underlying(Side::Buy), static_cast<std::uint8_t>('0'));
+    EXPECT_EQ(std::to_underlying(Side::Sell), static_cast<std::uint8_t>('1'));
 }
 
 TEST(Types, CapacityConstants) {
@@ -30,19 +32,19 @@ TEST(Types, CapacityConstants) {
 }
 
 TEST(Types, WireEnumValuesMatchSpec) {
-    EXPECT_EQ(static_cast<char>(EventCode::MessagesStart), 'O');
-    EXPECT_EQ(static_cast<char>(EventCode::SystemHoursStart), 'S');
-    EXPECT_EQ(static_cast<char>(MarketCategory::NasdaqSelect), 'Q');
-    EXPECT_EQ(static_cast<char>(FinancialStatusIndicator::Normal), 'N');
-    EXPECT_EQ(static_cast<char>(TradingState::Trading), 'T');
-    EXPECT_EQ(static_cast<char>(TradingState::Halted), 'H');
-    EXPECT_EQ(static_cast<char>(RegSHOAction::NoPriceTest), '0');
-    EXPECT_EQ(static_cast<char>(BuySellIndicator::BuyOrder), 'B');
-    EXPECT_EQ(static_cast<char>(BuySellIndicator::SellOrder), 'S');
-    EXPECT_EQ(static_cast<char>(Printable::Yes), 'Y');
-    EXPECT_EQ(static_cast<char>(CrossType::Closing), 'C');
-    EXPECT_EQ(static_cast<char>(CrossType::Opening), 'O');
-    EXPECT_EQ(static_cast<char>(Side::Buy), '0');
+    EXPECT_EQ(std::to_underlying(EventCode::MessagesStart), 'O');
+    EXPECT_EQ(std::to_underlying(EventCode::SystemHoursStart), 'S');
+    EXPECT_EQ(std::to_underlying(MarketCategory::NasdaqSelect), 'Q');
+    EXPECT_EQ(std::to_underlying(FinancialStatusIndicator::Normal), 'N');
+    EXPECT_EQ(std::to_underlying(TradingState::Trading), 'T');
+    EXPECT_EQ(std::to_underlying(TradingState::Halted), 'H');
+    EXPECT_EQ(std::to_underlying(RegSHOAction::NoPriceTest), '0');
+    EXPECT_EQ(std::to_underlying(BuySellIndicator::BuyOrder), 'B');
+    EXPECT_EQ(std::to_underlying(BuySellIndicator::SellOrder), 'S');
+    EXPECT_EQ(std::to_underlying(Printable::Yes), 'Y');
+    EXPECT_EQ(std::to_underlying(CrossType::Closing), 'C');
+    EXPECT_EQ(std::to_underlying(CrossType::Opening), 'O');
+    EXPECT_EQ(std::to_underlying(Side::Buy), '0');
 }
 
 } // namespace

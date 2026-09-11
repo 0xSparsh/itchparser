@@ -21,6 +21,11 @@ jobs:
     steps:
       - name: Check out
         uses: actions/checkout@v4
+        
+      - name: Install GCC 14
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-14
 
       - name: Select compiler
         run: |
@@ -29,9 +34,9 @@ jobs:
             echo "CC=clang" >> "$GITHUB_ENV"
             clang++ --version
           else
-            echo "CXX=g++" >> "$GITHUB_ENV"
-            echo "CC=gcc" >> "$GITHUB_ENV"
-            g++ --version
+            echo "CXX=g++-14" >> "$GITHUB_ENV"
+            echo "CC=gcc-14" >> "$GITHUB_ENV"
+            g++-14 --version
           fi
 
       # FIXED: Added matrix compiler and build type to the key to prevent cache pollution

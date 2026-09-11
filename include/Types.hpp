@@ -2,6 +2,7 @@
 
 #include<cstdint>
 #include<array>
+#include<utility>
 
 namespace itch {
 
@@ -282,7 +283,10 @@ enum class Side : uint8_t {
 };
 
 [[nodiscard]] constexpr Side to_side(BuySellIndicator bsi) noexcept {
-    return (static_cast<char>(bsi) == 'B')
+    // std::to_underlying reads the enum's actual underlying type instead of
+    // hard-coding 'char': if BuySellIndicator's representation ever changes,
+    // this keeps compiling to the right thing instead of silently breaking.
+    return (std::to_underlying(bsi) == 'B')
         ? Side::Buy
         : Side::Sell;
 }

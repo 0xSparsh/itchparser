@@ -6,13 +6,14 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
+#include <print>
 #include <string>
 
 namespace {
 
 void print_usage(const char* argv0) {
-    std::fprintf(stderr,
-        "Usage: %s [options] <path-to-itch-file>\n"
+    std::println(stderr,
+        "Usage: {} [options] <path-to-itch-file>\n"
         "\n"
         "  <path-to-itch-file> must be a raw decompressed ITCH file\n"
         "  (e.g. 12302019.NASDAQ_ITCH50). Gzip (.gz) is NOT supported —\n"
@@ -25,8 +26,8 @@ void print_usage(const char* argv0) {
         "  --help, -h              Show this message.\n"
         "\n"
         "Example:\n"
-        "  %s 12302019.NASDAQ_ITCH50\n"
-        "  %s --order-pool-size 8388608 12302019.NASDAQ_ITCH50\n",
+        "  {} 12302019.NASDAQ_ITCH50\n"
+        "  {} --order-pool-size 8388608 12302019.NASDAQ_ITCH50",
         argv0, argv0, argv0);
 }
 
@@ -56,18 +57,18 @@ int main(int argc, char** argv) {
             return EXIT_SUCCESS;
         } else if (arg == "--order-pool-size" && i + 1 < argc) {
             if (!parse_size(argv[++i], order_pool_size) || !is_pow2(order_pool_size)) {
-                std::fprintf(stderr, "Error: --order-pool-size must be a power-of-two > 0\n");
+                std::println(stderr, "Error: --order-pool-size must be a power-of-two > 0");
                 return EXIT_FAILURE;
             }
         } else if (arg == "--level-pool-size" && i + 1 < argc) {
             if (!parse_size(argv[++i], level_pool_size) || !is_pow2(level_pool_size)) {
-                std::fprintf(stderr, "Error: --level-pool-size must be a power-of-two > 0\n");
+                std::println(stderr, "Error: --level-pool-size must be a power-of-two > 0");
                 return EXIT_FAILURE;
             }
         } else if (arg == "--log-path" && i + 1 < argc) {
             log_path = argv[++i];
         } else if (arg.size() >= 2 && arg[0] == '-' && arg[1] == '-') {
-            std::fprintf(stderr, "Error: unknown option '%s'\n", arg.c_str());
+            std::println(stderr, "Error: unknown option '{}'", arg);
             print_usage(argv[0]);
             return EXIT_FAILURE;
         } else {
@@ -80,41 +81,41 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    std::fprintf(stderr, "[ITCHProcessor] config:\n");
-    std::fprintf(stderr, "  input             : %s\n", path.c_str());
-    std::fprintf(stderr, "  log path          : %s\n", log_path.c_str());
-    std::fprintf(stderr, "  order pool size   : %zu slots (%.1f MB)\n",
+    std::println(stderr, "[ITCHProcessor] config:");
+    std::println(stderr, "  input             : {}", path);
+    std::println(stderr, "  log path          : {}", log_path);
+    std::println(stderr, "  order pool size   : {} slots ({:.1f} MB)",
                  order_pool_size,
                  static_cast<double>(order_pool_size * sizeof(itch::Order)) / (1024.0 * 1024.0));
-    std::fprintf(stderr, "  level pool size   : %zu slots (%.1f MB)\n",
+    std::println(stderr, "  level pool size   : {} slots ({:.1f} MB)",
                  level_pool_size,
                  static_cast<double>(level_pool_size * sizeof(itch::PriceLevel)) / (1024.0 * 1024.0));
-    std::fprintf(stderr, "\n");
+    std::println(stderr, "");
 
     itch::LockFreeLogger logger(log_path.c_str());
     itch::MatchingEngine engine(logger, order_pool_size, level_pool_size);
 
-    if (path.size() > 3 && path.compare(path.size() - 3, 3, ".gz") == 0) {
-        std::fprintf(stderr,
+    if (path.ends_with(".gz")) {
+        std::println(stderr,
             "[ITCHProcessor] error: gzip input is not supported "
             "(gzip support removed).\n"
-            "  Decompress first: gunzip -k %s\n",
-            path.c_str());
+            "  Decompress first: gunzip -k {}",
+            path);
         return EXIT_FAILURE;
     }
     const std::string& bin_path = path;
 
     itch::MMapFile mmap(bin_path.c_str());
     if (!mmap.valid()) {
-        std::fprintf(stderr, "[ITCHProcessor] mmap(%s) failed\n", bin_path.c_str());
+        std::println(stderr, "[ITCHProcessor] mmap({}) failed", bin_path);
         return EXIT_FAILURE;
     }
     mmap.advise_sequential();
 
     logger.start();
 
-    std::fprintf(stderr, "[ITCHProcessor] parsing %zu MiB from %s...\n",
-                 mmap.size() / (1024 * 1024), bin_path.c_str());
+    std::println(stderr, "[ITCHProcessor] parsing {} MiB from {}...",
+                 mmap.size() / (1024 * 1024), bin_path);
 
     itch::Stats stats;
     stats.reset();
@@ -124,13 +125,13 @@ int main(int argc, char** argv) {
 
     logger.stop();
 
-    std::fprintf(stderr, "[ITCHProcessor] parse complete. Generating reports...\n");
+    std::println(stderr, "[ITCHProcessor] parse complete. Generating reports...");
     std::fflush(stderr);
 
     stats.print_report(stdout);
     std::fflush(stdout);
 
-    std::fprintf(stderr, "[ITCHProcessor] generating matching engine report...\n");
+    std::println(stderr, "[ITCHProcessor] generating matching engine report...");
     std::fflush(stderr);
 
     // Manually print the engine report (we can't reuse ITCHProcessor's
@@ -142,97 +143,97 @@ int main(int argc, char** argv) {
         const std::size_t op_free = engine.order_pool_free();
         const std::size_t lp_free = engine.level_pool_free();
 
-        std::fprintf(stdout,
+        std::println(stdout,
             "================================================================\n"
             "Matching Engine Report\n"
             "================================================================\n"
-            "  Instruments registered   : %llu\n"
+            "  Instruments registered   : {}\n"
             "\n"
             "  ---- Accepted events (mutated the book) ----\n"
-            "  Add-Order events         : %llu  (no MPID: %llu, with MPID: %llu)\n"
-            "  Order-Executed events    : %llu\n"
-            "  Order-Executed w/ Price  : %llu\n"
-            "  Order-Cancel events      : %llu\n"
-            "  Order-Delete events      : %llu\n"
-            "  Order-Replace events     : %llu\n"
-            "  Non-Cross Trade events   : %llu  (informational)\n"
-            "  Cross Trade events       : %llu  (clears the book)\n"
-            "  Broken Trade events      : %llu  (informational)\n"
+            "  Add-Order events         : {}  (no MPID: {}, with MPID: {})\n"
+            "  Order-Executed events    : {}\n"
+            "  Order-Executed w/ Price  : {}\n"
+            "  Order-Cancel events      : {}\n"
+            "  Order-Delete events      : {}\n"
+            "  Order-Replace events     : {}\n"
+            "  Non-Cross Trade events   : {}  (informational)\n"
+            "  Cross Trade events       : {}  (clears the book)\n"
+            "  Broken Trade events      : {}  (informational)\n"
             "\n"
             "  ---- Rejected events (did NOT mutate the book) ----\n"
-            "  Add-Order rejected (order pool exhausted)     : %llu\n"
-            "  Add-Order rejected (level pool/map exhausted) : %llu\n"
-            "  Replace rejected (order pool exhausted)       : %llu\n"
-            "  Duplicate Add (id already live)               : %llu\n"
-            "  Locate mismatch (E/X/D/U vs home)             : %llu\n"
-            "  Level missing (order found, level gone)       : %llu\n"
-            "  Unknown-order events (E/X/D/U on missing id)  : %llu\n"
-            "  Total pool-exhausted events                   : %llu\n"
+            "  Add-Order rejected (order pool exhausted)     : {}\n"
+            "  Add-Order rejected (level pool/map exhausted) : {}\n"
+            "  Replace rejected (order pool exhausted)       : {}\n"
+            "  Duplicate Add (id already live)               : {}\n"
+            "  Locate mismatch (E/X/D/U vs home)             : {}\n"
+            "  Level missing (order found, level gone)       : {}\n"
+            "  Unknown-order events (E/X/D/U on missing id)  : {}\n"
+            "  Total pool-exhausted events                   : {}\n"
             "\n"
             "  ---- Pool lifecycle diagnostics ----\n"
-            "  Order pool      : %10zu / %10zu free  (peak live: %llu)\n"
-            "  Level pool      : %10zu / %10zu free  (peak live: %llu)\n"
-            "  Live orders now : %llu   (should be ~0 after end-of-day cross)\n"
-            "  Live levels now : %llu\n"
-            "  Order index     : %zu live / %zu slots  (overflow: %zu, collisions: %llu)\n"
-            "----------------------------------------------------------------\n",
-            static_cast<unsigned long long>(es.instruments_registered),
+            "  Order pool      : {:10} / {:10} free  (peak live: {})\n"
+            "  Level pool      : {:10} / {:10} free  (peak live: {})\n"
+            "  Live orders now : {}   (should be ~0 after end-of-day cross)\n"
+            "  Live levels now : {}\n"
+            "  Order index     : {} live / {} slots  (overflow: {}, collisions: {})\n"
+            "----------------------------------------------------------------",
+            es.instruments_registered,
 
-            static_cast<unsigned long long>(es.add_orders + es.add_orders_with_mpid),
-            static_cast<unsigned long long>(es.add_orders),
-            static_cast<unsigned long long>(es.add_orders_with_mpid),
-            static_cast<unsigned long long>(es.order_executed),
-            static_cast<unsigned long long>(es.order_executed_with_price),
-            static_cast<unsigned long long>(es.order_cancel),
-            static_cast<unsigned long long>(es.order_delete),
-            static_cast<unsigned long long>(es.order_replace),
-            static_cast<unsigned long long>(es.non_cross_trades),
-            static_cast<unsigned long long>(es.cross_trades),
-            static_cast<unsigned long long>(es.broken_trades),
+            es.add_orders + es.add_orders_with_mpid,
+            es.add_orders,
+            es.add_orders_with_mpid,
+            es.order_executed,
+            es.order_executed_with_price,
+            es.order_cancel,
+            es.order_delete,
+            es.order_replace,
+            es.non_cross_trades,
+            es.cross_trades,
+            es.broken_trades,
 
-            static_cast<unsigned long long>(es.add_rejected_pool_exhausted),
-            static_cast<unsigned long long>(es.add_rejected_level_pool_exhausted),
-            static_cast<unsigned long long>(es.replace_rejected_pool_exhausted),
-            static_cast<unsigned long long>(es.duplicate_adds),
-            static_cast<unsigned long long>(es.locate_mismatches),
-            static_cast<unsigned long long>(es.level_missing),
-            static_cast<unsigned long long>(es.unknown_order_events),
-            static_cast<unsigned long long>(es.pool_exhausted),
+            es.add_rejected_pool_exhausted,
+            es.add_rejected_level_pool_exhausted,
+            es.replace_rejected_pool_exhausted,
+            es.duplicate_adds,
+            es.locate_mismatches,
+            es.level_missing,
+            es.unknown_order_events,
+            es.pool_exhausted,
 
             op_free, op_cap,
-            static_cast<unsigned long long>(es.peak_live_orders),
+            es.peak_live_orders,
             lp_free, lp_cap,
-            static_cast<unsigned long long>(es.peak_live_levels),
-            static_cast<unsigned long long>(es.live_orders),
-            static_cast<unsigned long long>(es.live_levels),
+            es.peak_live_levels,
+            es.live_orders,
+            es.live_levels,
             engine.order_index_size(), engine.order_index_capacity(),
             engine.order_index_overflow(),
-            static_cast<unsigned long long>(engine.order_index_collisions()));
+            engine.order_index_collisions());
         std::fflush(stdout);
 
         // Leak-detection sanity check
         if (es.live_orders != 0 && op_free == op_cap) {
-            std::fprintf(stdout,
-                "  WARNING: live_orders=%llu but order pool is fully free -\n"
-                "           this indicates an accounting bug in the matching engine.\n",
-                static_cast<unsigned long long>(es.live_orders));
+            std::println(stdout,
+                "  WARNING: live_orders={} but order pool is fully free -\n"
+                "           this indicates an accounting bug in the matching engine.",
+                es.live_orders);
         } else if (es.live_orders == 0 && op_free < op_cap) {
-            std::fprintf(stdout,
-                "  WARNING: live_orders=0 but order pool has %zu slots in use —\n"
+            std::println(stdout,
+                "  WARNING: live_orders=0 but order pool has {} slots in use —\n"
                 "           this indicates an Order was acquired but never released\n"
-                "           (a leak in the matching engine).\n",
+                "           (a leak in the matching engine).",
                 op_cap - op_free);
         } else {
-            std::fprintf(stdout,
-                "  Pool lifecycle: OK (live_orders counter matches pool state).\n");
+            std::println(stdout,
+                "  Pool lifecycle: OK (live_orders counter matches pool state).");
         }
-        std::fprintf(stdout, "----------------------------------------------------------------\n");
+        std::println(stdout, "----------------------------------------------------------------");
         std::fflush(stdout);
 
         // Print BBO for a few well-known symbols - useful smoke test.
         // We limit to 10 instruments so this is fast even with 8,906
         // registered instruments
-        std::fprintf(stdout, "Top-of-book sample (first 10 instruments with live orders):\n");
+        std::println(stdout, "Top-of-book sample (first 10 instruments with live orders):");
         std::fflush(stdout);
         std::size_t shown = 0;
         engine.instruments().for_each([&](itch::Instrument* inst) {
@@ -241,20 +242,20 @@ int main(int argc, char** argv) {
             char sym[9] = {};
             std::memcpy(sym, inst->symbol.data(), 8);
             sym[8] = '\0';
-            std::fprintf(stdout,
-                "  %-8s  bid=%u x %llu   ask=%u x %llu   live_orders=%zu\n",
+            std::println(stdout,
+                "  {:<8}  bid={} x {}   ask={} x {}   live_orders={}",
                 sym,
                 inst->book->best_bid_price(),
-                static_cast<unsigned long long>(inst->book->best_bid_shares()),
+                inst->book->best_bid_shares(),
                 inst->book->best_ask_price(),
-                static_cast<unsigned long long>(inst->book->best_ask_shares()),
+                inst->book->best_ask_shares(),
                 inst->book->live_orders());
             ++shown;
         });
-        std::fprintf(stdout, "================================================================\n");
+        std::println(stdout, "================================================================");
         std::fflush(stdout);
     }
 
-    std::fprintf(stderr, "[ITCHProcessor] done.\n");
+    std::println(stderr, "[ITCHProcessor] done.");
     return EXIT_SUCCESS;
 }

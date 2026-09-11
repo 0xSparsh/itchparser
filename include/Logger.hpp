@@ -12,6 +12,7 @@
 #include <string_view>
 #include <thread>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 #include <cstdlib>
 #include <algorithm>
@@ -91,7 +92,7 @@ public:
     template <std::size_t N>
     void log(LogLevel level, const char (&tag)[N],
              std::string_view msg) noexcept {
-        if (static_cast<std::uint8_t>(level) <
+        if (std::to_underlying(level) <
             min_level_.load(std::memory_order_relaxed)) {
             return;
         }
@@ -137,7 +138,7 @@ public:
     }
 
     void set_min_level(LogLevel l) noexcept {
-        min_level_.store(static_cast<std::uint8_t>(l),
+        min_level_.store(std::to_underlying(l),
                          std::memory_order_relaxed);
     }
 
@@ -310,7 +311,7 @@ private:
 
     alignas(kCacheLineSize) std::atomic<std::uint64_t> dropped_{0};
     alignas(kCacheLineSize) std::atomic<std::uint8_t> min_level_{
-        static_cast<std::uint8_t>(LogLevel::Info)
+        std::to_underlying(LogLevel::Info)
     };
 
     alignas(kCacheLineSize) std::atomic<bool> running_{false};

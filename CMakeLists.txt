@@ -50,6 +50,22 @@ target_link_options(itch_optimised INTERFACE
     $<$<CONFIG:Release>:-flto>
 )
 
+# Reporting uses C++23 <print> (std::println), which needs a recent
+# standard library (GCC 14+, or Clang with a GCC 14+ libstdc++).
+# Fail here with a clear message instead of drowning in header errors.
+include(CheckCXXSourceCompiles)
+set(CMAKE_REQUIRED_FLAGS "-std=c++23")
+check_cxx_source_compiles(
+    "#include <print>\nint main(){ std::println(\"hi {}\", 42); return 0; }"
+    ITCH_HAS_PRINT)
+unset(CMAKE_REQUIRED_FLAGS)
+if(NOT ITCH_HAS_PRINT)
+    message(FATAL_ERROR
+        "itch_parser requires C++23 <print> support.\n"
+        "  GCC 14+ (preferred):  sudo apt install g++-14 && CXX=g++-14 cmake -B build\n"
+        "  Clang needs a GCC 14+ libstdc++ visible on its default include path.")
+endif()
+
 find_package(Threads REQUIRED)
 
 add_library(itch_core STATIC

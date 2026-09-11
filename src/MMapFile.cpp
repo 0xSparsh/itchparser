@@ -1,9 +1,10 @@
 #include "MMapFile.hpp"
 
 #include <cerrno>   // For errno
-#include <cstdio>   // For fprintf
-#include <cstring>  // For strerror
+#include <cstdio>    // For fflush (kept: println does not flush)
+#include <cstring>   // For strerror
 #include <cstddef>
+#include <print>     // std::println (C++23, type-safe diagnostics)
 
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -17,7 +18,7 @@ namespace {
 // err simply means ERRNO which on a POSIX/LINUX sysem
 [[maybe_unused]] void log_syserr(const char* what, int err) noexcept {
     const char* msg = std::strerror(err);
-    std::fprintf(stderr, "[MMapFile] %s failed: %s (errno=%d)\n", what, msg ? msg : "?", err);
+    std::println(stderr, "[MMapFile] {} failed: {} (errno={})", what, msg ? msg : "?", err);
 }
 
 }
@@ -41,14 +42,14 @@ MMapFile::MMapFile(const char* path) noexcept {
     }
 
     if (!S_ISREG(st.st_mode)) {
-        std::fprintf(stderr, "[MMapFile] not a regular file: %s\n", path);
+        std::println(stderr, "[MMapFile] not a regular file: {}", path);
         ::close(fd_);
         fd_ = -1;
         return;
     }
 
     if (st.st_size <= 0) {
-        std::fprintf(stderr, "[MMapFile] empty file: %s\n", path);
+        std::println(stderr, "[MMapFile] empty file: {}", path);
         ::close(fd_);
         fd_ = -1;
         return;

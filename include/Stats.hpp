@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <print>
 #include <string>
 #include <string_view>
 
@@ -81,29 +82,31 @@ struct Stats {
 
     void print_report(std::FILE* out) const {
         const double s = elapsed_seconds();         // Calculate total run time
-        std::fprintf(out,
+        // std::println appends the trailing newline, so the format string
+        // must not end with one. Integer counters pass natively — no casts.
+        std::println(out,
             "================================================================\n"
             "ITCH Parser Run Report\n"
             "================================================================\n"
-            "  Elapsed wall-clock      : %.3f s\n"
-            "  Total messages          : %llu\n"
-            "  Total payload bytes     : %llu (%.2f MiB)\n"
-            "  Total framing bytes     : %llu\n"
-            "  Throughput (msgs/sec)   : %.2f M\n"
-            "  Throughput (MiB/sec)    : %.2f\n"
-            "  Parse errors            : %llu\n"
-            "  Truncated messages      : %llu\n"
+            "  Elapsed wall-clock      : {:.3f} s\n"
+            "  Total messages          : {}\n"
+            "  Total payload bytes     : {} ({:.2f} MiB)\n"
+            "  Total framing bytes     : {}\n"
+            "  Throughput (msgs/sec)   : {:.2f} M\n"
+            "  Throughput (MiB/sec)    : {:.2f}\n"
+            "  Parse errors            : {}\n"
+            "  Truncated messages      : {}\n"
             "----------------------------------------------------------------\n"
-            "Per-message-type breakdown:\n",
+            "Per-message-type breakdown:",
             s,
-            static_cast<unsigned long long>(total_messages),
-            static_cast<unsigned long long>(total_bytes),
+            total_messages,
+            total_bytes,
             static_cast<double>(total_bytes) / (1024.0 * 1024.0),
-            static_cast<unsigned long long>(total_framing_bytes),
+            total_framing_bytes,
             msgs_per_sec() / 1e6,
             mb_per_sec(),
-            static_cast<unsigned long long>(parse_errors),
-            static_cast<unsigned long long>(truncated_messages));
+            parse_errors,
+            truncated_messages);
 
         // Temporary row : Message type + count
         struct Row {
@@ -141,14 +144,14 @@ struct Stats {
                 ? 100.0 * static_cast<double>(rows[i].count)
                         / static_cast<double>(total_messages) : 0.0;
 
-            std::fprintf(out, "  '%c' (0x%02X) %-30s : %12llu  (%5.2f%%)\n",
-                         (tag >= 32 && tag < 127) ? tag : '.',
-                         rows[i].type,
-                         type_name(static_cast<char>(rows[i].type)),
-                         static_cast<unsigned long long>(rows[i].count),
-                         pct);
+            std::println(out, "  '{}' (0x{:02X}) {:<30} : {:12}  ({:5.2f}%)",
+                           (tag >= 32 && tag < 127) ? tag : '.',
+                           rows[i].type,
+                           type_name(static_cast<char>(rows[i].type)),
+                           rows[i].count,
+                           pct);
         }
-        std::fprintf(out, "================================================================\n");
+        std::println(out, "================================================================");
     }
 
     [[nodiscard]] static constexpr const char* type_name(char t) noexcept {
