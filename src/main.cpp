@@ -105,11 +105,13 @@ int main(int argc, char** argv) {
     }
     const std::string& bin_path = path;
 
-    itch::MMapFile mmap(bin_path.c_str());
-    if (!mmap.valid()) {
-        std::println(stderr, "[ITCHProcessor] mmap({}) failed", bin_path);
+    auto mapped = itch::MMapFile::open(bin_path.c_str());
+    if (!mapped) {
+        std::println(stderr, "[ITCHProcessor] mmap({}) failed: {}",
+                     bin_path, mapped.error().message());
         return EXIT_FAILURE;
     }
+    itch::MMapFile mmap = std::move(*mapped);
     mmap.advise_sequential();
 
     logger.start();

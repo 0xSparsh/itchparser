@@ -26,33 +26,41 @@ namespace {
 // O_RDONLY means open the file in read only mode
 // O_CLOEXEC marks the file descriptor as close-on-exec, if the process later calls exec() then this descriptor will atomatically be closed
 MMapFile::MMapFile(const char* path) noexcept {
+    // Legacy entry point: the failure reason goes to stderr and validity
+    // is signalled through valid(). New code should use open().
+    open_into(path);
+}
+
+std::error_code MMapFile::open_into(const char* path) noexcept {
     fd_ = ::open(path, O_RDONLY | O_CLOEXEC);
 
     if (fd_ < 0) {
-        log_syserr("open", errno);
-        return;
+        const int e = errno;
+        log_syserr("open", e);
+        return {e, std::generic_category()};
     }
 
     struct stat st{};
     if (::fstat(fd_, &st) != 0) {
-        log_syserr("fstat", errno);
+        const int e = errno;
+        log_syserr("fstat", e);
         ::close(fd_);
         fd_ = -1;
-        return;
+        return {e, std::generic_category()};
     }
 
     if (!S_ISREG(st.st_mode)) {
         std::println(stderr, "[MMapFile] not a regular file: {}", path);
         ::close(fd_);
         fd_ = -1;
-        return;
+        return std::make_error_code(std::errc::invalid_argument);
     }
 
     if (st.st_size <= 0) {
         std::println(stderr, "[MMapFile] empty file: {}", path);
         ::close(fd_);
         fd_ = -1;
-        return;
+        return std::make_error_code(std::errc::invalid_argument);
     }
 
     // We need to static_cast st.st_size cause it is off_t type 
@@ -61,13 +69,14 @@ MMapFile::MMapFile(const char* path) noexcept {
     void* p = mmap(nullptr, size_, PROT_READ, MAP_PRIVATE | MAP_NORESERVE, fd_, 0);
 
     if (p == MAP_FAILED) {
-        log_syserr("mmap", errno);
+        const int e = errno;
+        log_syserr("mmap", e);
         ::close(fd_);
         fd_ = -1;
-        return;
+        return {e, std::generic_category()};
     }
     data_ = static_cast<const std::byte*>(p);
-
+    return {};
 }
 
 MMapFile::~MMapFile() { release(); }

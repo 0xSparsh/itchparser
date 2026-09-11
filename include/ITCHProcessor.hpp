@@ -31,11 +31,13 @@ public:
     ITCHProcessor& operator=(const ITCHProcessor&) = delete;
 
     bool run(const std::string& path) {
-        MMapFile mmap(path.c_str());
-        if (!mmap.valid()) {
-            std::println(stderr, "[ITCHProcessor] mmap({}) failed", path);
+        auto mapped = MMapFile::open(path.c_str());
+        if (!mapped) {
+            std::println(stderr, "[ITCHProcessor] mmap({}) failed: {}",
+                         path, mapped.error().message());
             return false;
         }
+        MMapFile mmap = std::move(*mapped);
 
         mmap.advise_sequential();
 

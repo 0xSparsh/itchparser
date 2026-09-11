@@ -10,10 +10,18 @@
 #include <vector>
 #include <cstdint>
 #include <cstring>
+#include <expected>
 #include <span>
 #include <string_view>
 
 namespace itch {
+
+// Every wire handler starts the same way: the length-prefixed frame may be
+// shorter than the message struct for its type (corrupt/truncated feed).
+// checked_cast centralises that guard so no handler can forget the check or
+// get the size wrong. The [[nodiscard]] expected forces each call site to
+// unwrap the result — the failure path stays explicit at every handler.
+enum class ParseError : std::uint8_t { Truncated };
 
 class Parser {
 public:
@@ -49,10 +57,9 @@ public:
             const char type = static_cast<char>(*p);
 
             // Dispatch
-            // We pass the payload pointer (p) and the payload_len so each
-            // handler can validate the length matches the expected wire
-            // size for its type. If the length doesn't match we treat it
-            // as a truncated/corrupt message and skip it.
+            // We pass the payload pointer (p) and the payload_len; each
+            // handler unwraps it through checked_cast, which rejects
+            // payloads shorter than the expected wire struct for the type.
             dispatch(type, p, payload_len, engine, stats);
 
             // ---- 6. Advance past the payload ----
@@ -63,6 +70,18 @@ public:
     }
 
 private:
+    // Length-check + reinterpret cast in one step. Returns the typed view
+    // on success, ParseError::Truncated when the frame is too short.
+    // Inlined into every handler — no extra call in the hot path.
+    template <typename Msg>
+    [[nodiscard]] static std::expected<const Msg*, ParseError>
+    checked_cast(const std::byte* p, std::uint16_t len) noexcept {
+        if (len < sizeof(Msg)) [[unlikely]] {
+            return std::unexpected(ParseError::Truncated);
+        }
+        return reinterpret_cast<const Msg*>(p);
+    }
+
     // Dispatch on message type. Using a switch rather than a function
     // pointer table because the compiler can inline the handlers
     // when it sees the call sites are small and the branch predictor
@@ -109,98 +128,100 @@ private:
     static void handle_system_event(const std::byte* p, std::uint16_t len,
                                     MatchingEngine& engine, Stats& stats) {
         (void)engine;
-        if (len < sizeof(wire::SystemEventMsg)) { stats.on_truncated(); return; }
-        const wire::SystemEventMsg* m =
-            reinterpret_cast<const wire::SystemEventMsg*>(p);
+        auto m = checked_cast<wire::SystemEventMsg>(p, len);
+        if (!m) { stats.on_truncated(); return; }
         // System events don't affect the book — we just decode the
         // event code for completeness.
-        (void)m->eventCode;
+        (void)(*m)->eventCode;
     }
 
     static void handle_stock_directory(const std::byte* p, std::uint16_t len,
                                        MatchingEngine& engine, Stats& stats) {
-        if (len < sizeof(wire::StockDirectoryMsg)) { stats.on_truncated(); return; }
-        const wire::StockDirectoryMsg* m =
-            reinterpret_cast<const wire::StockDirectoryMsg*>(p);
+        auto m = checked_cast<wire::StockDirectoryMsg>(p, len);
+        if (!m) { stats.on_truncated(); return; }
         engine.on_stock_directory(
-            itch::load_be16(&m->hdr.stockLocateHi),
-            m->stock.data(),
-            static_cast<MarketCategory>(m->marketCategory),
-            static_cast<FinancialStatusIndicator>(m->financialStatusIndicator),
-            itch::load_be32(m->roundLotSize),
-            static_cast<RoundLotsOnly>(m->roundLotsOnly),
-            static_cast<Authenticity>(m->authenticity),
-            static_cast<ShortScaleThresholdIndicator>(m->shortScaleThresholdIndicator),
-            static_cast<IPOFlag>(m->ipoFlag),
-            static_cast<LULDReferencePriceTier>(m->luldReferencePriceTier),
-            static_cast<ETPFlag>(m->etpFlag),
-            itch::load_be32(m->etpLeverageFactor),
-            static_cast<InverseIndicator>(m->inverseIndicator));
+            itch::load_be16(&(*m)->hdr.stockLocateHi),
+            (*m)->stock.data(),
+            static_cast<MarketCategory>((*m)->marketCategory),
+            static_cast<FinancialStatusIndicator>((*m)->financialStatusIndicator),
+            itch::load_be32((*m)->roundLotSize),
+            static_cast<RoundLotsOnly>((*m)->roundLotsOnly),
+            static_cast<Authenticity>((*m)->authenticity),
+            static_cast<ShortScaleThresholdIndicator>((*m)->shortScaleThresholdIndicator),
+            static_cast<IPOFlag>((*m)->ipoFlag),
+            static_cast<LULDReferencePriceTier>((*m)->luldReferencePriceTier),
+            static_cast<ETPFlag>((*m)->etpFlag),
+            itch::load_be32((*m)->etpLeverageFactor),
+            static_cast<InverseIndicator>((*m)->inverseIndicator));
     }
 
     static void handle_stock_trading_action(const std::byte* p, std::uint16_t len,
                                             MatchingEngine& engine, Stats& stats) {
-        if (len < sizeof(wire::StockTradingActionMsg)) { stats.on_truncated(); return; }
-        const wire::StockTradingActionMsg* m =
-            reinterpret_cast<const wire::StockTradingActionMsg*>(p);
+        auto m = checked_cast<wire::StockTradingActionMsg>(p, len);
+        if (!m) { stats.on_truncated(); return; }
         engine.on_trading_action(
-            itch::load_be16(&m->hdr.stockLocateHi),
-            static_cast<TradingState>(m->tradingState),
-            m->stock.data(),
-            m->reason.data());
+            itch::load_be16(&(*m)->hdr.stockLocateHi),
+            static_cast<TradingState>((*m)->tradingState),
+            (*m)->stock.data(),
+            (*m)->reason.data());
     }
 
     static void handle_reg_sho(const std::byte* p, std::uint16_t len,
                                MatchingEngine& engine, Stats& stats) {
-        if (len < sizeof(wire::RegSHOMsg)) { stats.on_truncated(); return; }
-        const wire::RegSHOMsg* m =
-            reinterpret_cast<const wire::RegSHOMsg*>(p);
+        auto m = checked_cast<wire::RegSHOMsg>(p, len);
+        if (!m) { stats.on_truncated(); return; }
         engine.on_reg_sho(
-            itch::load_be16(&m->hdr.stockLocateHi),
-            static_cast<RegSHOAction>(m->regSHOAction));
+            itch::load_be16(&(*m)->hdr.stockLocateHi),
+            static_cast<RegSHOAction>((*m)->regSHOAction));
     }
 
     static void handle_market_participant(const std::byte* p, std::uint16_t len,
                                           MatchingEngine& engine, Stats& stats) {
         (void)engine;
-        if (len < sizeof(wire::MarketParticipantPositionMsg)) { stats.on_truncated(); return; }
+        auto m = checked_cast<wire::MarketParticipantPositionMsg>(p, len);
+        if (!m) { stats.on_truncated(); return; }
         // Market participant position doesn't affect the book.
-        (void)p;
+        (void)m;
     }
 
     static void handle_mwcb_decline(const std::byte* p, std::uint16_t len,
                                     MatchingEngine& engine, Stats& stats) {
         (void)engine;
-        if (len < sizeof(wire::MWCBDeclineLevelMsg)) { stats.on_truncated(); return; }
-        (void)p;
+        auto m = checked_cast<wire::MWCBDeclineLevelMsg>(p, len);
+        if (!m) { stats.on_truncated(); return; }
+        (void)m;
     }
 
     static void handle_mwcb_status(const std::byte* p, std::uint16_t len,
                                    MatchingEngine& engine, Stats& stats) {
         (void)engine;
-        if (len < sizeof(wire::MWCBStatusMsg)) { stats.on_truncated(); return; }
-        (void)p;
+        auto m = checked_cast<wire::MWCBStatusMsg>(p, len);
+        if (!m) { stats.on_truncated(); return; }
+        (void)m;
     }
 
     static void handle_ipo_quoting_period(const std::byte* p, std::uint16_t len,
                                           MatchingEngine& engine, Stats& stats) {
         (void)engine;
-        if (len < sizeof(wire::IPOQuotingPeriodUpdateMsg)) { stats.on_truncated(); return; }
-        (void)p;
+        auto m = checked_cast<wire::IPOQuotingPeriodUpdateMsg>(p, len);
+        if (!m) { stats.on_truncated(); return; }
+        (void)m;
     }
 
     static void handle_luld_auction_collar(const std::byte* p, std::uint16_t len,
                                            MatchingEngine& engine, Stats& stats) {
         (void)engine;
-        if (len < sizeof(wire::LULDAuctionCollarMsg)) { stats.on_truncated(); return; }
-        (void)p;
+        auto m = checked_cast<wire::LULDAuctionCollarMsg>(p, len);
+        if (!m) { stats.on_truncated(); return; }
+        (void)m;
     }
 
     static void handle_operational_halt(const std::byte* p, std::uint16_t len,
                                         MatchingEngine& engine, Stats& stats) {
         (void)engine;
-        if (len < sizeof(wire::OperationalHaltMsg)) { stats.on_truncated(); return; }
-        (void)p;
+        auto m = checked_cast<wire::OperationalHaltMsg>(p, len);
+        if (!m) { stats.on_truncated(); return; }
+        (void)m;
     }
 
     // Add Order - both 'A' (no MPID) and 'F' (with MPID) go through
@@ -210,32 +231,30 @@ private:
     static void handle_add_order(const std::byte* p, std::uint16_t len,
                                  MatchingEngine& engine, Stats& stats, bool attributed) {
         if (attributed) {
-            if (len < sizeof(wire::AddOrderMPIDMsg)) { stats.on_truncated(); return; }
-            const wire::AddOrderMPIDMsg* m =
-                reinterpret_cast<const wire::AddOrderMPIDMsg*>(p);
+            auto m = checked_cast<wire::AddOrderMPIDMsg>(p, len);
+            if (!m) { stats.on_truncated(); return; }
             engine.on_add_order(
-                itch::load_be16(&m->hdr.stockLocateHi),
-                itch::load_be64(m->orderReferenceNumber),
-                static_cast<BuySellIndicator>(m->buySellIndicator),
-                itch::load_be32(m->shares),
-                itch::load_be32(m->price),
-                itch::load_be48(m->hdr.ts),
-                m->attribution,
+                itch::load_be16(&(*m)->hdr.stockLocateHi),
+                itch::load_be64((*m)->orderReferenceNumber),
+                static_cast<BuySellIndicator>((*m)->buySellIndicator),
+                itch::load_be32((*m)->shares),
+                itch::load_be32((*m)->price),
+                itch::load_be48((*m)->hdr.ts),
+                (*m)->attribution,
                 /*attributed=*/true);
         } else {
-            if (len < sizeof(wire::AddOrderMsg)) { stats.on_truncated(); return; }
-            const wire::AddOrderMsg* m =
-                reinterpret_cast<const wire::AddOrderMsg*>(p);
+            auto m = checked_cast<wire::AddOrderMsg>(p, len);
+            if (!m) { stats.on_truncated(); return; }
             // For unattributed orders, pass an empty MPID (spaces).
             // The engine will copy this into the Order struct.
             const MPID empty_mpid{' ', ' ', ' ', ' '};
             engine.on_add_order(
-                itch::load_be16(&m->hdr.stockLocateHi),
-                itch::load_be64(m->orderReferenceNumber),
-                static_cast<BuySellIndicator>(m->buySellIndicator),
-                itch::load_be32(m->shares),
-                itch::load_be32(m->price),
-                itch::load_be48(m->hdr.ts),
+                itch::load_be16(&(*m)->hdr.stockLocateHi),
+                itch::load_be64((*m)->orderReferenceNumber),
+                static_cast<BuySellIndicator>((*m)->buySellIndicator),
+                itch::load_be32((*m)->shares),
+                itch::load_be32((*m)->price),
+                itch::load_be48((*m)->hdr.ts),
                 empty_mpid,
                 /*attributed=*/false);
         }
@@ -243,117 +262,112 @@ private:
 
     static void handle_order_executed(const std::byte* p, std::uint16_t len,
                                       MatchingEngine& engine, Stats& stats) {
-        if (len < sizeof(wire::OrderExecutedMsg)) { stats.on_truncated(); return; }
-        const wire::OrderExecutedMsg* m =
-            reinterpret_cast<const wire::OrderExecutedMsg*>(p);
+        auto m = checked_cast<wire::OrderExecutedMsg>(p, len);
+        if (!m) { stats.on_truncated(); return; }
         engine.on_order_executed(
-            itch::load_be16(&m->hdr.stockLocateHi),
-            itch::load_be64(m->orderReferenceNumber),
-            itch::load_be32(m->executedShares),
-            itch::load_be64(m->matchNumber));
+            itch::load_be16(&(*m)->hdr.stockLocateHi),
+            itch::load_be64((*m)->orderReferenceNumber),
+            itch::load_be32((*m)->executedShares),
+            itch::load_be64((*m)->matchNumber));
     }
 
     static void handle_order_executed_price(const std::byte* p, std::uint16_t len,
                                             MatchingEngine& engine, Stats& stats) {
-        if (len < sizeof(wire::OrderExecutedWithPriceMsg)) { stats.on_truncated(); return; }
-        const wire::OrderExecutedWithPriceMsg* m =
-            reinterpret_cast<const wire::OrderExecutedWithPriceMsg*>(p);
+        auto m = checked_cast<wire::OrderExecutedWithPriceMsg>(p, len);
+        if (!m) { stats.on_truncated(); return; }
         engine.on_order_executed_with_price(
-            itch::load_be16(&m->hdr.stockLocateHi),
-            itch::load_be64(m->orderReferenceNumber),
-            itch::load_be32(m->executedShares),
-            itch::load_be64(m->matchNumber),
-            static_cast<Printable>(m->printable),
-            itch::load_be32(m->executionPrice));
+            itch::load_be16(&(*m)->hdr.stockLocateHi),
+            itch::load_be64((*m)->orderReferenceNumber),
+            itch::load_be32((*m)->executedShares),
+            itch::load_be64((*m)->matchNumber),
+            static_cast<Printable>((*m)->printable),
+            itch::load_be32((*m)->executionPrice));
     }
 
     static void handle_order_cancel(const std::byte* p, std::uint16_t len,
                                     MatchingEngine& engine, Stats& stats) {
-        if (len < sizeof(wire::OrderCancelMsg)) { stats.on_truncated(); return; }
-        const wire::OrderCancelMsg* m =
-            reinterpret_cast<const wire::OrderCancelMsg*>(p);
+        auto m = checked_cast<wire::OrderCancelMsg>(p, len);
+        if (!m) { stats.on_truncated(); return; }
         engine.on_order_cancel(
-            itch::load_be16(&m->hdr.stockLocateHi),
-            itch::load_be64(m->orderReferenceNumber),
-            itch::load_be32(m->cancelledShares));
+            itch::load_be16(&(*m)->hdr.stockLocateHi),
+            itch::load_be64((*m)->orderReferenceNumber),
+            itch::load_be32((*m)->cancelledShares));
     }
 
     static void handle_order_delete(const std::byte* p, std::uint16_t len,
                                     MatchingEngine& engine, Stats& stats) {
-        if (len < sizeof(wire::OrderDeleteMsg)) { stats.on_truncated(); return; }
-        const wire::OrderDeleteMsg* m =
-            reinterpret_cast<const wire::OrderDeleteMsg*>(p);
+        auto m = checked_cast<wire::OrderDeleteMsg>(p, len);
+        if (!m) { stats.on_truncated(); return; }
         engine.on_order_delete(
-            itch::load_be16(&m->hdr.stockLocateHi),
-            itch::load_be64(m->orderReferenceNumber));
+            itch::load_be16(&(*m)->hdr.stockLocateHi),
+            itch::load_be64((*m)->orderReferenceNumber));
     }
 
     static void handle_order_replace(const std::byte* p, std::uint16_t len,
                                      MatchingEngine& engine, Stats& stats) {
-        if (len < sizeof(wire::OrderReplaceMsg)) { stats.on_truncated(); return; }
-        const wire::OrderReplaceMsg* m =
-            reinterpret_cast<const wire::OrderReplaceMsg*>(p);
+        auto m = checked_cast<wire::OrderReplaceMsg>(p, len);
+        if (!m) { stats.on_truncated(); return; }
         engine.on_order_replace(
-            itch::load_be16(&m->hdr.stockLocateHi),
-            itch::load_be64(m->originalOrderReferenceNumber),
-            itch::load_be64(m->newOrderReferenceNumber),
-            itch::load_be32(m->shares),
-            itch::load_be32(m->price),
-            itch::load_be48(m->hdr.ts));
+            itch::load_be16(&(*m)->hdr.stockLocateHi),
+            itch::load_be64((*m)->originalOrderReferenceNumber),
+            itch::load_be64((*m)->newOrderReferenceNumber),
+            itch::load_be32((*m)->shares),
+            itch::load_be32((*m)->price),
+            itch::load_be48((*m)->hdr.ts));
     }
 
     static void handle_non_cross_trade(const std::byte* p, std::uint16_t len,
                                        MatchingEngine& engine, Stats& stats) {
-        if (len < sizeof(wire::NonCrossTradeMsg)) { stats.on_truncated(); return; }
-        const wire::NonCrossTradeMsg* m =
-            reinterpret_cast<const wire::NonCrossTradeMsg*>(p);
+        auto m = checked_cast<wire::NonCrossTradeMsg>(p, len);
+        if (!m) { stats.on_truncated(); return; }
         engine.on_non_cross_trade(
-            itch::load_be16(&m->hdr.stockLocateHi),
-            itch::load_be32(m->shares),
-            itch::load_be32(m->price),
-            itch::load_be64(m->matchNumber));
+            itch::load_be16(&(*m)->hdr.stockLocateHi),
+            itch::load_be32((*m)->shares),
+            itch::load_be32((*m)->price),
+            itch::load_be64((*m)->matchNumber));
     }
 
     static void handle_cross_trade(const std::byte* p, std::uint16_t len,
                                    MatchingEngine& engine, Stats& stats) {
-        if (len < sizeof(wire::CrossTradeMsg)) { stats.on_truncated(); return; }
-        const wire::CrossTradeMsg* m =
-            reinterpret_cast<const wire::CrossTradeMsg*>(p);
+        auto m = checked_cast<wire::CrossTradeMsg>(p, len);
+        if (!m) { stats.on_truncated(); return; }
         engine.on_cross_trade(
-            itch::load_be16(&m->hdr.stockLocateHi),
-            static_cast<CrossType>(m->crossType));
+            itch::load_be16(&(*m)->hdr.stockLocateHi),
+            static_cast<CrossType>((*m)->crossType));
     }
 
     static void handle_broken_trade(const std::byte* p, std::uint16_t len,
                                     MatchingEngine& engine, Stats& stats) {
-        if (len < sizeof(wire::BrokenTradeMsg)) { stats.on_truncated(); return; }
-        const wire::BrokenTradeMsg* m =
-            reinterpret_cast<const wire::BrokenTradeMsg*>(p);
+        auto m = checked_cast<wire::BrokenTradeMsg>(p, len);
+        if (!m) { stats.on_truncated(); return; }
         engine.on_broken_trade(
-            itch::load_be16(&m->hdr.stockLocateHi),
-            itch::load_be64(m->matchNumber));
+            itch::load_be16(&(*m)->hdr.stockLocateHi),
+            itch::load_be64((*m)->matchNumber));
     }
 
     static void handle_noii(const std::byte* p, std::uint16_t len,
                             MatchingEngine& engine, Stats& stats) {
         (void)engine;
-        if (len < sizeof(wire::NOIIMsg)) { stats.on_truncated(); return; }
-        (void)p;
+        auto m = checked_cast<wire::NOIIMsg>(p, len);
+        if (!m) { stats.on_truncated(); return; }
+        (void)m;
         // NOII doesn't affect the book.
     }
 
     static void handle_rpii(const std::byte* p, std::uint16_t len,
                             MatchingEngine& engine, Stats& stats) {
         (void)engine;
-        if (len < sizeof(wire::RetailPriceImprovementIndicatorMsg)) { stats.on_truncated(); return; }
-        (void)p;
+        auto m = checked_cast<wire::RetailPriceImprovementIndicatorMsg>(p, len);
+        if (!m) { stats.on_truncated(); return; }
+        (void)m;
     }
 
     static void handle_dlcr(const std::byte* p, std::uint16_t len,
                             MatchingEngine& engine, Stats& stats) {
         (void)engine;
-        if (len < sizeof(wire::DLCRMsg)) { stats.on_truncated(); return; }
-        (void)p;
+        auto m = checked_cast<wire::DLCRMsg>(p, len);
+        if (!m) { stats.on_truncated(); return; }
+        (void)m;
     }
 };
 

@@ -1,8 +1,10 @@
 #pragma once
 
 #include <cstddef>
+#include <expected>
 #include <span>
 #include <string_view>
+#include <system_error>
 
 // Memory map the file instead of read() for zero copying
 namespace itch {
@@ -11,8 +13,23 @@ class MMapFile
 {
 public:
     MMapFile() noexcept = default;
+
     explicit MMapFile(const char* path) noexcept;
     ~MMapFile();
+
+    // Preferred entry point. The returned expected forces the caller to
+    // unwrap success/failure, unlike the constructor, this cannot be
+    // used without handling the error. OS failures carry the original
+    // errno; semantic rejections (not a file / empty file) report
+    // std::errc::invalid_argument.
+    [[nodiscard]] static std::expected<MMapFile, std::error_code>
+    open(const char* path) noexcept {
+        MMapFile m;
+        if (std::error_code ec = m.open_into(path); ec) {
+            return std::unexpected(ec);
+        }
+        return m;
+    }
 
     MMapFile(const MMapFile& other) = delete;
     MMapFile& operator=(const MMapFile& other) = delete;
@@ -36,6 +53,11 @@ private:
     int fd_ = -1;
 
     void release() noexcept;
+
+    // Shared open logic behind both the legacy constructor and open().
+    // Returns an empty error_code on success. Every failure path also
+    // prints a specific diagnostic to stderr, as before.
+    std::error_code open_into(const char* path) noexcept;
 };
 
 } // namespace itch

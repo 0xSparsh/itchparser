@@ -116,6 +116,7 @@ if(ITCH_BUILD_TESTS)
         tests/test_flathashmap.cpp
         tests/test_mmap.cpp
         tests/test_logger.cpp
+        tests/test_parser.cpp
     )
 
     target_link_libraries(itch_tests

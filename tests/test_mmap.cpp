@@ -3,6 +3,7 @@
 #include "MMapFile.hpp"
 #include <string>
 #include <cstring>
+#include <cerrno>
 #include <cstdlib>
 #include <unistd.h>
 
@@ -107,6 +108,27 @@ TEST(MMapFile, PrefaultTouchesEveryPage) {
     MMapFile m(t.path.c_str());
     ASSERT_TRUE(m.valid());
     EXPECT_EQ(m.prefault(), 3 * 4096u);
+}
+
+TEST(MMapFile, OpenFactorySuccess) {
+    TempFile t("hello-world");
+    auto r = MMapFile::open(t.path.c_str());
+    ASSERT_TRUE(r.has_value());
+    EXPECT_TRUE(r->valid());
+    EXPECT_EQ(r->size(), 11u);
+    EXPECT_EQ(std::memcmp(r->data(), "hello-world", 11), 0);
+}
+
+TEST(MMapFile, OpenFactoryReportsErrno) {
+    auto r = MMapFile::open("/tmp/itch_definitely_does_not_exist_12345.bin");
+    ASSERT_FALSE(r.has_value());
+    EXPECT_EQ(r.error().value(), ENOENT);
+}
+
+TEST(MMapFile, OpenFactoryRejectsEmptyFile) {
+    TempFile t("");
+    auto r = MMapFile::open(t.path.c_str());
+    EXPECT_FALSE(r.has_value());
 }
 
 } // namespace

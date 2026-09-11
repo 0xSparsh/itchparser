@@ -191,11 +191,12 @@ static void BM_Parser_RealFile(benchmark::State& state) {
         state.SkipWithMessage("no ITCH file (set ITCH_DATA=... to enable)");
         return;
     }
-    MMapFile mmap(path.c_str());
-    if (!mmap.valid()) {
+    auto mapped = MMapFile::open(path.c_str());
+    if (!mapped) {
         state.SkipWithMessage("mmap failed");
         return;
     }
+    MMapFile mmap = std::move(*mapped);
     constexpr std::size_t kSlice = 16u << 20;
     const std::size_t slice = mmap.size() < kSlice ? mmap.size() : kSlice;
     LockFreeLogger logger("/dev/null");
