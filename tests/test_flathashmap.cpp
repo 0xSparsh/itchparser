@@ -37,7 +37,7 @@ TEST(FlatHashMap, FindMissingReturnsNull) {
 
 TEST(FlatHashMap, InsertDuplicateOverwritesReturnsFalse) {
     SmallMap m;
-    int x = 1; y = 2;
+    int x = 1, y = 2;
     EXPECT_TRUE(m.insert(42, &x));
     EXPECT_FALSE(m.insert(42, &y));     // Overwrites path returns false
     EXPECT_EQ(m.find(42), &y);
@@ -51,7 +51,7 @@ TEST(FlatHashMap, EraseRemovesAndShrinks) {
     EXPECT_EQ(m.size(), 1u);
     m.erase(7);
     EXPECT_EQ(m.size(), 0u);
-    EXPECET_EQ(m.find(), nullptr);
+    EXPECT_EQ(m.find(7), nullptr);
 }
 
 TEST(FlatHashMap, EraseMissingIsNoOp) {
@@ -72,20 +72,18 @@ TEST(FlatHashMap, EraseRepairsProbeChainNoTombstones) {
     }
     EXPECT_EQ(m.size(), 40u);
 
-    for (int i = 0; i < 40; i += 2) 
+    for (int i = 0; i < 40; i += 2)
         m.erase(static_cast<std::uint32_t>(i + 1));
     EXPECT_EQ(m.size(), 20u);
-
-    for (int i = 0; i < 40; i += 2) {
+    
+    for (int i = 1; i < 40; i += 2) {
         void* p = m.find(static_cast<std::uint32_t>(i + 1));
         ASSERT_NE(p, nullptr) << "lost key " << (i + 1)
-                              << "after proble -chain repair";
+                              << " after probe-chain repair";
         EXPECT_EQ(*static_cast<int*>(p), i);
     }
-
-    for (int i = 0; i < 40; i += 2) {
+    for (int i = 0; i < 40; i += 2)
         EXPECT_EQ(m.find(static_cast<std::uint32_t>(i + 1)), nullptr);
-    }
 }
 
 TEST(FlatHashMap, ClearResetsAll) {

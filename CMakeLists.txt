@@ -2,53 +2,114 @@ cmake_minimum_required(VERSION 3.16)
 
 project(itch_parser LANGUAGES CXX)
 
-# Build configuration
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)        # use -std=c++23 not -std=gnu++23
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# This project relies on Linux/POSIX system interfaces.
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(FATAL_ERROR "itch_parser supports Linux only.")
+endif()
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
-# Compiler flags — aggressive optimisation for low-latency hot paths
-add_compile_options(
-    -Wall -Wextra -Wpedantic
-    -Wno-unused-parameter          # we have many "future-proof" parameters
+option(ITCH_BUILD_TESTS "Build unit tests" ON)
+
+add_library(itch_warnings INTERFACE)
+
+target_compile_options(itch_warnings INTERFACE
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Wno-unused-parameter
     -Wno-unused-variable
     -Wno-missing-field-initializers
 )
 
-# Release/RelWithDebInfo flags
-add_compile_options(
+add_library(itch_optimised INTERFACE)
+
+target_compile_options(itch_optimised INTERFACE
     $<$<CONFIG:Release>:-O3>
-    $<$<CONFIG:Release>:-march=native>     # use whatever SIMD the host CPU has
+    $<$<CONFIG:Release>:-march=native>
     $<$<CONFIG:Release>:-mtune=native>
     $<$<CONFIG:Release>:-funroll-loops>
     $<$<CONFIG:Release>:-fno-semantic-interposition>
-    $<$<CONFIG:Release>:-flto>             # whole-program link-time optimisation
+    $<$<CONFIG:Release>:-flto>
 
-    # RelWithDebInfo keeps debug info (-g) but otherwise matches Release.
     $<$<CONFIG:RelWithDebInfo>:-O3>
     $<$<CONFIG:RelWithDebInfo>:-march=native>
+    $<$<CONFIG:RelWithDebInfo>:-mtune=native>
     $<$<CONFIG:RelWithDebInfo>:-g3>
     $<$<CONFIG:RelWithDebInfo>:-ggdb3>
 )
 
-# Linker flags for LTO consistency.
-add_link_options(
+target_link_options(itch_optimised INTERFACE
     $<$<CONFIG:Release>:-flto>
+)
+
+find_package(Threads REQUIRED)
+
+add_library(itch_core STATIC
+    src/MMapFile.cpp
+)
+
+target_include_directories(itch_core
+    PUBLIC
+        ${PROJECT_SOURCE_DIR}/include
+)
+
+target_link_libraries(itch_core
+    PUBLIC
+        itch_warnings
+        itch_optimised
+        Threads::Threads
 )
 
 add_executable(itch_parser
     src/main.cpp
-    src/MMapFile.cpp
 )
 
-target_include_directories(itch_parser PRIVATE
-    include
+target_link_libraries(itch_parser
+    PRIVATE
+        itch_core
 )
 
-target_link_libraries(itch_parser PRIVATE
-    pthread                            # for std::thread in the logger
+if(ITCH_BUILD_TESTS)
+    include(FetchContent)
+
+    FetchContent_Declare(
+        googletest
+        URL https://github.com/google/googletest/archive/v1.14.0.zip
+    )
+
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+
+    FetchContent_MakeAvailable(googletest)
+
+    enable_testing()
+    include(GoogleTest)
+
+    add_executable(itch_tests
+        tests/test_endian.cpp
+        tests/test_types.cpp
+        tests/test_wire.cpp
+        tests/test_engine.cpp
+        tests/test_flathashmap.cpp
+    )
+
+    target_link_libraries(itch_tests
+        PRIVATE
+            itch_core
+            GTest::gtest_main
+    )
+
+    gtest_discover_tests(itch_tests
+        DISCOVERY_TIMEOUT 60
+    )
+endif()
+
+message(STATUS
+    "itch_parser: ${CMAKE_BUILD_TYPE}, tests=${ITCH_BUILD_TESTS}"
 )
