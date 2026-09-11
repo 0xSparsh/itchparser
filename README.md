@@ -160,8 +160,8 @@ counters only), so there are two answers:
 ### Requirements
 
 - CMake >= 3.16
-- A C++23-capable compiler with `<print>` support: GCC 14+ (`sudo apt install g++-14`),
-  or Clang with a GCC 14+ libstdc++ on its include path (reporting uses `std::println`)
+- A C++23-capable compiler: GCC 14+ (`sudo apt install g++-14`), or Clang 20+
+  with a GCC 14+ libstdc++ on its include path. 
 - Linux or another platform supporting POSIX `mmap`
 
 ### Compile

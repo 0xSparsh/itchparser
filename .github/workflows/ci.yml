@@ -22,17 +22,20 @@ jobs:
       - name: Check out
         uses: actions/checkout@v4
         
-      - name: Install GCC 14
+      - name: Install Clang 20
+        if: matrix.compiler == 'clang'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y g++-14
+          wget -q https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 20
+          clang++-20 --version
 
       - name: Select compiler
         run: |
           if [ "${{ matrix.compiler }}" = "clang" ]; then
-            echo "CXX=clang++" >> "$GITHUB_ENV"
-            echo "CC=clang" >> "$GITHUB_ENV"
-            clang++ --version
+            echo "CXX=clang++-20" >> "$GITHUB_ENV"
+            echo "CC=clang-20" >> "$GITHUB_ENV"
+            clang++-20 --version
           else
             echo "CXX=g++-14" >> "$GITHUB_ENV"
             echo "CC=gcc-14" >> "$GITHUB_ENV"
