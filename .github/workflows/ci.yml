@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.compiler }} / ${{ matrix.build_type }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        build_type: [Release, Debug]
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Select compiler
+        run: |
+          if [ "${{ matrix.compiler }}" = "clang" ]; then
+            echo "CXX=clang++" >> "$GITHUB_ENV"
+            echo "CC=clang" >> "$GITHUB_ENV"
+            clang++ --version
+          else
+            echo "CXX=g++" >> "$GITHUB_ENV"
+            echo "CC=gcc" >> "$GITHUB_ENV"
+            g++ --version
+          fi
+
+      # FIXED: Added matrix compiler and build type to the key to prevent cache pollution
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/_deps/googletest-src
+            build/_deps/googletest-subbuild
+            build/_deps/googlebenchmark-src
+            build/_deps/googlebenchmark-subbuild
+          key: deps-${{ runner.os }}-${{ matrix.compiler }}-${{ matrix.build_type }}-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: |
+            deps-${{ runner.os }}-${{ matrix.compiler }}-${{ matrix.build_type }}-
+
+      - name: Configure
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DITCH_BUILD_TESTS=ON
+          -DITCH_BUILD_BENCHMARKS=ON
+
+      - name: Build
+        run: cmake --build build -j "$(nproc)"
+
+      # OPTIMIZATION: Uses the modern multi-platform syntax for ctest
+      - name: Run unit tests
+        run: ctest --preset default --test-dir build --output-on-failure
+
+      - name: Smoke-run benchmark binaries
+        run: |
+          ./build/bench_book --benchmark_min_time=0.05s
+          ./build/bench_engine --benchmark_min_time=0.05s
+          ./build/bench_parser --benchmark_min_time=0.05s
+
+      - name: Smoke-run parser CLI
+        run: ./build/itch_parser --help
