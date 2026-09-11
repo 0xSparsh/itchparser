@@ -260,8 +260,6 @@ OrderBook - DirectOrderIndex lookup, PriceLevel insert/update/remove,
 In-memory market state (best bid/ask per instrument, full depth)
 ```
 
-See [DESIGN.md](DESIGN.md) for the reasoning behind each of these components - why a direct-indexed order lookup instead of a plain hash map, how the pools are sized, why orders are cache-line aligned, and the tradeoffs made at each layer.
-
 ## Order Book
 
 The order book is designed around the access patterns of an order-by-order market data feed: adds, cancels, and deletes dominate (together >94% of message volume in the sample run above), and every one of them needs O(1) order lookup and O(1) level insert/remove at the best bid/ask.
