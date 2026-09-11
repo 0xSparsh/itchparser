@@ -16,6 +16,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 option(ITCH_BUILD_TESTS "Build unit tests" ON)
+option(ITCH_BUILD_BENCHMARKS "Build benchmarks" ON)
 
 add_library(itch_warnings INTERFACE)
 
@@ -97,6 +98,8 @@ if(ITCH_BUILD_TESTS)
         tests/test_wire.cpp
         tests/test_engine.cpp
         tests/test_flathashmap.cpp
+        tests/test_mmap.cpp
+        tests/test_logger.cpp
     )
 
     target_link_libraries(itch_tests
@@ -108,6 +111,31 @@ if(ITCH_BUILD_TESTS)
     gtest_discover_tests(itch_tests
         DISCOVERY_TIMEOUT 60
     )
+endif()
+
+if(ITCH_BUILD_BENCHMARKS)
+    set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+    set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
+    set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+
+    FetchContent_Declare(
+        googlebenchmark
+        URL https://github.com/google/benchmark/archive/v1.8.3.zip
+    )
+
+    FetchContent_MakeAvailable(googlebenchmark)
+
+    foreach(bench parser engine book)
+        add_executable(bench_${bench}
+            benchmark/bench_${bench}.cpp
+        )
+
+        target_link_libraries(bench_${bench}
+            PRIVATE
+                itch_core
+                benchmark::benchmark
+        )
+    endforeach()
 endif()
 
 message(STATUS
