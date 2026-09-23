@@ -1,14 +1,25 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(itch_parser LANGUAGES CXX)
+# Prefer GCC 14 when no compiler has been explicitly selected.
+if(NOT DEFINED CMAKE_CXX_COMPILER)
+    find_program(GXX_14 g++-14)
+    if(GXX_14)
+        set(CMAKE_CXX_COMPILER "${GXX_14}" CACHE FILEPATH "C++ compiler")
+    endif()
+endif()
 
+project(itch_parser
+    VERSION 1.0
+    LANGUAGES CXX
+)
+
+# Project configuration
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# This project relies on Linux/POSIX system interfaces.
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    message(FATAL_ERROR "itch_parser supports Linux only.")
+    message(FATAL_ERROR "itch_parser requires Linux.")
 endif()
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -18,6 +29,7 @@ endif()
 option(ITCH_BUILD_TESTS "Build unit tests" ON)
 option(ITCH_BUILD_BENCHMARKS "Build benchmarks" ON)
 
+# Compiler configuration
 add_library(itch_warnings INTERFACE)
 
 target_compile_options(itch_warnings INTERFACE
@@ -50,40 +62,47 @@ target_link_options(itch_optimised INTERFACE
     $<$<CONFIG:Release>:-flto>
 )
 
-# Reporting uses C++23 <print> (std::println), which needs a recent
-# standard library (GCC 14+, or Clang with a GCC 14+ libstdc++).
-# Fail here with a clear message instead of drowning in header errors.
+# C++23 <print> is required by the project.
 include(CheckCXXSourceCompiles)
-set(CMAKE_REQUIRED_FLAGS "-std=c++23")
-check_cxx_source_compiles(
-    "#include <print>\nint main(){ std::println(\"hi {}\", 42); return 0; }"
-    ITCH_HAS_PRINT)
-unset(CMAKE_REQUIRED_FLAGS)
+
+check_cxx_source_compiles([=[
+    #include <print>
+
+    int main()
+    {
+        std::println("hello {}", 42);
+    }
+]=] ITCH_HAS_PRINT)
+
 if(NOT ITCH_HAS_PRINT)
     message(FATAL_ERROR
-        "itch_parser requires C++23 <print> support.\n"
-        "  GCC 14+ (preferred):  sudo apt install g++-14 && CXX=g++-14 cmake -B build\n"
-        "  Clang needs a GCC 14+ libstdc++ visible on its default include path.")
+        "itch_parser requires a compiler with C++23 <print> support. "
+        "Use GCC 14+ or Clang 20+ with GCC 14+ libstdc++."
+    )
 endif()
 
 find_package(Threads REQUIRED)
 
+# Core library
 add_library(itch_core STATIC
     src/MMapFile.cpp
 )
 
 target_include_directories(itch_core
     PUBLIC
-        ${PROJECT_SOURCE_DIR}/include
+        "${PROJECT_SOURCE_DIR}/include"
 )
+
+target_compile_features(itch_core PUBLIC cxx_std_23)
 
 target_link_libraries(itch_core
     PUBLIC
+        Threads::Threads
         itch_warnings
         itch_optimised
-        Threads::Threads
 )
 
+# Main executable
 add_executable(itch_parser
     src/main.cpp
 )
@@ -93,6 +112,7 @@ target_link_libraries(itch_parser
         itch_core
 )
 
+# Tests
 if(ITCH_BUILD_TESTS)
     include(FetchContent)
 
@@ -130,7 +150,10 @@ if(ITCH_BUILD_TESTS)
     )
 endif()
 
+# Benchmarks
 if(ITCH_BUILD_BENCHMARKS)
+    include(FetchContent)
+
     set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
     set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
     set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
@@ -142,12 +165,12 @@ if(ITCH_BUILD_BENCHMARKS)
 
     FetchContent_MakeAvailable(googlebenchmark)
 
-    foreach(bench parser engine book)
-        add_executable(bench_${bench}
-            benchmark/bench_${bench}.cpp
+    foreach(benchmark IN ITEMS parser engine book)
+        add_executable(bench_${benchmark}
+            benchmark/bench_${benchmark}.cpp
         )
 
-        target_link_libraries(bench_${bench}
+        target_link_libraries(bench_${benchmark}
             PRIVATE
                 itch_core
                 benchmark::benchmark
@@ -156,5 +179,8 @@ if(ITCH_BUILD_BENCHMARKS)
 endif()
 
 message(STATUS
-    "itch_parser: ${CMAKE_BUILD_TYPE}, tests=${ITCH_BUILD_TESTS}"
+    "itch_parser ${PROJECT_VERSION}: "
+    "build=${CMAKE_BUILD_TYPE}, "
+    "tests=${ITCH_BUILD_TESTS}, "
+    "benchmarks=${ITCH_BUILD_BENCHMARKS}"
 )
