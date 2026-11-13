@@ -12,141 +12,8 @@
 
 namespace itch {
 
-// Implementing a flat hash map for hot path lookups
-
-// KeyT      - key
-// ValueT    - value
-// kCapacity - number of slots in table
-// kEmpty    - special key value meaning the slot is empty
-
-// usage :- FlatHashMap(uint64_t, Foo*, 1024, 0)
-// kEmpty = 0 means the slot is empty
-// RESTRICTION :- the map cannot legitimately store 0 as a key
-
-template <typename KeyT, typename ValueT,
-           std::size_t kCapacity, KeyT kEmpty>
-class FlatHashMap {
-    static_assert((kCapacity & (kCapacity - 1)) == 0,
-                  "kCapacity must be a power of 2");
-public:
-
-    // This default constructor makes two vectors keys_ and values_
-    // The keys_ vector will be of size = kCapacity and the values will be intialized to 0
-    // The values_ vector will be of capacity of size = kCapacity and the values will be initialized to nullptr
-    FlatHashMap() noexcept
-        : keys_(kCapacity, kEmpty)
-        , values_(kCapacity, nullptr)
-    {}
-
-    bool insert(KeyT k, ValueT v) noexcept {
-        const std::size_t mask = kCapacity - 1;
-        std::size_t i = hash(k) & mask;
-        for (std::size_t probe = 0; probe < kCapacity; ++probe) {
-            if (keys_[i] == kEmpty) {
-                keys_[i]   = k;
-                values_[i] = v;
-                ++size_;
-                return true;
-            }
-
-            if (keys_[i] == k) {
-                values_[i] = v;
-                return false;
-            }
-
-            i = (i + 1) & mask;
-        }
-
-        assert(false && "FlatHashMap full — increase capacity");
-        return false;
-    }
-
-    // Returns nullptr if not found.
-    [[nodiscard]] ValueT find(KeyT k) const noexcept {
-        const std::size_t mask = kCapacity - 1;
-        std::size_t i = hash(k) & mask;
-        for (std::size_t probe = 0; probe < kCapacity; ++probe) {
-            if (keys_[i] == kEmpty) return nullptr;
-            if (keys_[i] == k) return values_[i];
-            i = (i + 1) & mask;
-        }
-        return nullptr;
-    }
-
-    // Remove a key and repair the probe chain.
-    void erase(KeyT k) noexcept {
-        const std::size_t mask = kCapacity - 1;
-        std::size_t i = hash(k) & mask;
-        for (std::size_t probe = 0; probe < kCapacity; ++probe) {
-            if (keys_[i] == kEmpty) return;
-            if (keys_[i] == k) {
-                keys_[i]   = kEmpty;
-                values_[i] = nullptr;
-                --size_;
-
-                std::size_t j = (i + 1) & mask;
-                while (keys_[j] != kEmpty) {
-                    KeyT   rk = keys_[j];
-                    ValueT rv = values_[j];
-                    keys_[j]   = kEmpty;
-                    values_[j] = nullptr;
-                    --size_;
-                    insert(rk, rv);
-                    j = (j + 1) & mask;
-                }
-                return;
-            }
-
-            i = (i + 1) & mask;
-        }
-    }
-
-    void clear() noexcept {
-        std::fill(keys_.begin(), keys_.end(), kEmpty);
-        std::fill(values_.begin(), values_.end(), nullptr);
-        size_ = 0;
-    }
-
-    [[nodiscard]] std::size_t size() const noexcept { return size_; }
-    static constexpr std::size_t Capacity = kCapacity;
-
-    template <typename Fn>
-    void for_each(Fn&& fn) const {
-        for (std::size_t i = 0; i < kCapacity; ++i) {
-            if (keys_[i] != kEmpty) {
-                fn(keys_[i], values_[i]);
-            }
-        }
-    }
-
-private:
-    static constexpr std::uint64_t hash(KeyT k) noexcept {
-        std::uint64_t x = static_cast<std::uint64_t>(k);
-        x ^= x >> 33;
-        x *= 0xff51afd7ed558ccdULL;
-        x ^= x >> 33;
-        x *= 0xc4ceb9fe1a85ec53ULL;
-        x ^= x >> 33;
-        return x;
-    }
-
-    std::vector<KeyT>    keys_;
-    std::vector<ValueT>  values_;
-    std::size_t          size_{0};
-};
-
-// Per-instrument resting state.
 class OrderBook {
 public:
-    static constexpr std::size_t kPriceLevelMapCapacity = 1u << 13;
-
-    static constexpr Price   kEmptyPrice   = static_cast<Price>(-1);
-    static constexpr OrderReferenceNumber kEmptyOrderId =
-        static_cast<OrderReferenceNumber>(-1);
-
-    using LevelMap = FlatHashMap<Price, PriceLevel*,
-                                 kPriceLevelMapCapacity, kEmptyPrice>;
-
     OrderBook() noexcept = default;
 
     OrderBook(const OrderBook&)            = delete;
@@ -154,13 +21,13 @@ public:
 
     // Add a resting order.
     // Returns 0 on failure (level pool exhausted),
-    // 1 if added to an existing level,
-    // 2 if a new level was created.
-    int add_order(Order* o, MemoryPool<PriceLevel>& level_pool) {
+    //         1 if added to an existing level,
+    //         2 if a new level was created.
+    int add_order(Order* o, MemoryPool<PriceLevel>& level_pool) noexcept {
         const Side  s  = o->side;
         const Price px = o->price_cents;
 
-        PriceLevel* lvl = find_level(s, px);
+        PriceLevel* lvl = static_cast<PriceLevel*>(find_level(s, px));
         bool created = false;
         if (!lvl) [[unlikely]] {
             lvl = level_pool.acquire();
@@ -175,19 +42,19 @@ public:
             created = true;
         }
 
-        lvl->push_back(o);
+        lvl->push_back(o);   // sets o->level_
         ++live_order_count_;
         return created ? 2 : 1;
     }
 
-    // Apply a partial fill.
-    // Returns -1 if the level is missing,
-    // 0 if partially filled (order still live),
-    // 1 if fully filled and level remains,
-    // 2 if fully filled and level was removed.
+    // Apply a (partial) fill.
+    // Returns -1 if the order is not linked to a level,
+    //         0 if partially filled (order still live),
+    //         1 if fully filled and the level remains,
+    //         2 if fully filled and the level was removed.
     int execute_order(Order* o, Shares qty,
-                       MemoryPool<PriceLevel>& level_pool) noexcept {
-        PriceLevel* lvl = find_level(o->side, o->price_cents);
+                      MemoryPool<PriceLevel>& level_pool) noexcept {
+        PriceLevel* lvl = o->level_;        // direct - no hash lookup
         if (!lvl) [[unlikely]] return -1;
 
         const Shares filled = (qty >= o->shares_remaining)
@@ -198,7 +65,7 @@ public:
         if (!now_dead) {
             return 0;
         }
-        lvl->unlink(o);
+        lvl->unlink(o);                     // deducts 0: remainder is 0
         --live_order_count_;
         if (lvl->empty()) {
             remove_level_from_list(o->side, lvl);
@@ -212,20 +79,20 @@ public:
 
     // Cancel uses the same logic as execute.
     int cancel_order(Order* o, Shares qty,
-                      MemoryPool<PriceLevel>& level_pool) noexcept {
+                     MemoryPool<PriceLevel>& level_pool) noexcept {
         return execute_order(o, qty, level_pool);
     }
 
     // Remove an order completely.
-    // Returns 0 if the level is missing,
-    // 1 if removed and level remains,
-    // 2 if removed and level was removed.
+    // Returns 0 if the order is not linked to a level,
+    //         1 if removed and the level remains,
+    //         2 if removed and the level was removed.
     int remove_order(Order* o, MemoryPool<PriceLevel>& level_pool) noexcept {
-        PriceLevel* lvl = find_level(o->side, o->price_cents);
+        PriceLevel* lvl = o->level_;        // direct - no hash lookup
         if (!lvl) [[unlikely]] {
             return 0;
         }
-        lvl->unlink_and_deduct(o);
+        lvl->unlink(o);                     // deducts the full remainder
         --live_order_count_;
         if (lvl->empty()) {
             remove_level_from_list(o->side, lvl);
@@ -268,23 +135,23 @@ public:
         return best_ask_;
     }
 
-    // Visit every live order.
+    // Visit every live order (bids then asks, best price first).
     template <typename Fn>
     void for_each_order(Fn&& fn) const {
-        for (PriceLevel* lvl = best_bid_; lvl; lvl = lvl->next_level) {
-            for (Order* o = lvl->head_order; o; o = o->next_) {
-                fn(o);
+        for (const PriceLevel* lvl = best_bid_; lvl; lvl = lvl->next_level) {
+            for (const Order* o = lvl->head_order; o; o = o->next_) {
+                fn(const_cast<Order*>(o));
             }
         }
 
-        for (PriceLevel* lvl = best_ask_; lvl; lvl = lvl->next_level) {
-            for (Order* o = lvl->head_order; o; o = o->next_) {
-                fn(o);
+        for (const PriceLevel* lvl = best_ask_; lvl; lvl = lvl->next_level) {
+            for (const Order* o = lvl->head_order; o; o = o->next_) {
+                fn(const_cast<Order*>(o));
             }
         }
     }
 
-    // Release all price levels.
+    // Release all price levels (used by the closing-cross drain).
     void clear_levels(MemoryPool<PriceLevel>& level_pool) noexcept {
         PriceLevel* lvl = best_bid_;
         while (lvl) {
@@ -300,20 +167,14 @@ public:
             lvl = next;
         }
 
-        best_bid_  = nullptr;
-        best_ask_  = nullptr;
-        bid_level_count_ = 0;
-        ask_level_count_ = 0;
-        live_order_count_ = 0;
-        bid_map_.clear();
-        ask_map_.clear();
+        reset_metadata();
     }
 
     void clear_and_release(MemoryPool<PriceLevel>& level_pool) noexcept {
         clear_levels(level_pool);
     }
 
-    void clear_metadata() noexcept {
+    void reset_metadata() noexcept {
         best_bid_  = nullptr;
         best_ask_  = nullptr;
         bid_level_count_ = 0;
@@ -324,7 +185,8 @@ public:
     }
 
 private:
-    [[nodiscard]] PriceLevel* find_level(Side s, Price px) const noexcept {
+    // Only the ADD path needs a price->level lookup now.
+    [[nodiscard]] void* find_level(Side s, Price px) const noexcept {
         return (s == Side::Buy) ? bid_map_.find(px) : ask_map_.find(px);
     }
 
@@ -348,7 +210,11 @@ private:
         }
     }
 
-    // Insert level in price order.
+    // Insert level in price order (bids descending, asks ascending).
+    // Linear scan from the best end: book activity concentrates near the
+    // top of the book, so the scan is short in practice. (If profiling
+    // ever shows this hot, the fix is a skiplist or a per-symbol price
+    // bucket array - see the guide's performance section.)
     void insert_level_sorted(Side s, PriceLevel* lvl) noexcept {
         if (s == Side::Buy) {
             PriceLevel* prev = nullptr;
@@ -391,7 +257,7 @@ private:
         lvl->next_level = nullptr;
     }
 
-    LevelMap    bid_map_{};
+    LevelMap    bid_map_{};   // FlatMap<Price, PriceLevel*> - grows on demand
     LevelMap    ask_map_{};
 
     PriceLevel* best_bid_{nullptr};

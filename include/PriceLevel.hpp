@@ -44,6 +44,7 @@ struct PriceLevel {
     void push_back(Order* o) noexcept {
         o->next_ = nullptr;
         o->prev_ = tail_order;
+        o->level_ = this;
 
         if (tail_order) {
             tail_order->next_ = o;
@@ -57,7 +58,12 @@ struct PriceLevel {
         ++order_count;
     }
 
+    // Remove `o` from this level and deduct whatever is left on it.
+    // For a fully-filled order the caller already deducted the executed
+    // quantity, so remaining == 0 and the deduction here is 0.
     void unlink(Order* o) noexcept {
+        total_shares -= o->shares_remaining;
+
         if (o->prev_) {
             o->prev_->next_ = o->next_;
         }
@@ -72,14 +78,10 @@ struct PriceLevel {
             tail_order = o->prev_;
         }
 
-        o->next_ = nullptr;
-        o->prev_ = nullptr;
+        o->next_  = nullptr;
+        o->prev_  = nullptr;
+        o->level_ = nullptr;
         --order_count;
-    }
-
-    void unlink_and_deduct(Order* o) noexcept {
-        total_shares -= o->shares_remaining;
-        unlink(o);
     }
 
     [[nodiscard]] bool empty() const noexcept {

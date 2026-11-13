@@ -83,7 +83,7 @@ struct Stats {
     void print_report(std::FILE* out) const {
         const double s = elapsed_seconds();         // Calculate total run time
         // std::println appends the trailing newline, so the format string
-        // must not end with one. Integer counters pass natively — no casts.
+        // must not end with one. Integer counters pass natively.
         std::println(out,
             "================================================================\n"
             "ITCH Parser Run Report\n"
@@ -122,18 +122,10 @@ struct Stats {
         }
 
         // Sort rows from highest count to lowest count.
-        for (std::size_t i = 0; i < 256; ++i) {
-            std::size_t best = i;
-            for (std::size_t j = i + 1; j < 256; ++j) {
-                if (rows[j].count > rows[best].count) {
-                    best = j;
-                }
-            }
-
-            if (best != i) {
-                std::swap(rows[i], rows[best]);
-            }
-        }
+        std::sort(rows.begin(), rows.end(),
+                  [](const Row& a, const Row& b) {
+                      return a.count > b.count;
+                  });
 
         // Print messages that were actually seen
         for (std::size_t  i = 0; i < 256; ++i) {

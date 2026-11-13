@@ -306,11 +306,20 @@ namespace detail {
     };
 } // namespace detail
 
-[[nodiscard]] constexpr std::size_t wire_payload_size(char type) noexcept {
+// Direct-index table: message type byte -> payload size (0 = unknown).
+// One load instead of a linear scan over the message catalogue; built at
+// compile time from kMsgMeta so the table can never drift from the
+// struct definitions above.
+inline constexpr std::array<std::uint8_t, 256> kWirePayloadSize = [] {
+    std::array<std::uint8_t, 256> t{};   // zero-initialized: unknown -> 0
     for (const auto& m : detail::kMsgMeta) {
-        if (m.type == type) [[unlikely]] return m.size;
+        t[static_cast<unsigned char>(m.type)] = static_cast<std::uint8_t>(m.size);
     }
-    return 0;
+    return t;
+}();
+
+[[nodiscard]] constexpr std::size_t wire_payload_size(char type) noexcept {
+    return kWirePayloadSize[static_cast<unsigned char>(type)];
 }
 
 } // namespace itch::wire

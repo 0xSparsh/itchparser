@@ -278,8 +278,8 @@ enum class IssueClassificationValue : char {
 };
 
 enum class Side : uint8_t {
-    Buy = '0',
-    Sell = '1'
+    Buy = 0,
+    Sell = 1
 };
 
 [[nodiscard]] constexpr Side to_side(BuySellIndicator bsi) noexcept {
@@ -291,13 +291,31 @@ enum class Side : uint8_t {
         : Side::Sell;
 }
 
+// Index into a 2-element per-side array.
+[[nodiscard]] constexpr std::size_t side_index(Side s) noexcept {
+    return s == Side::Buy ? 0 : 1;
+}
+
+// Opposite side.
+[[nodiscard]] constexpr Side opposite(Side s) noexcept {
+    return s == Side::Buy ? Side::Sell : Side::Buy;
+}
+
 // StockLocate is uint16_t so the full range of value gives us 65536
 // possible instruments for direct indexing
-inline constexpr std::size_t kMaxInstruments = 65536;   
+inline constexpr std::size_t kMaxInstruments = 65536;
 
-// Fixed Pool capacities used by Matching Engine
+// Fixed Pool capacities used by the book builder.
+// NOTE: with the lazy MemoryPool (see MemoryPool.hpp) these are upper bounds
+// on capacity, NOT pre-committed memory: an empty pool now costs one mmap
+// reservation and no resident pages, so keeping generous defaults is free.
 inline constexpr std::size_t kOrderPoolSize = 1u << 24;         // 2^24
 inline constexpr std::size_t kPriceLevelPoolSize = 1u << 22;    // 2^22
+
+// ITCH Price(4) fields max out at 200,000.0000 = 2,000,000,000 (0x77359400),
+// so 0xFFFFFFFF is a safe "empty" sentinel for price keys (per the spec).
+inline constexpr Price kMaxValidPrice = 2'000'000'000u;
+inline constexpr Price kEmptyPriceKey = 0xFFFFFFFFu;
 
 // Cache line size on a x86-64
 // Used to align hot structures so that adjacent objects do not suffer false sharing.
