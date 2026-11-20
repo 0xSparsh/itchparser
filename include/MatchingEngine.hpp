@@ -109,10 +109,7 @@ public:
             Order* o = slots_[id & kMask];
             if (o && o->order_id == id) [[likely]] return o;
         }
-        // Cheap guard on the common "no collisions yet" case: skips the
-        // hash + bucket walk of the overflow map entirely, and keeps the
-        // whole check inline even when the compiler's inlining budget
-        // pushes _Hashtable::find out of line.
+
         if (overflow_.empty()) [[likely]] return nullptr;
         auto it = overflow_.find(id);
         if (it != overflow_.end()) return it->second;
