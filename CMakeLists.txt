@@ -133,7 +133,7 @@ if(ITCH_BUILD_TESTS)
         tests/test_types.cpp
         tests/test_wire.cpp
         tests/test_engine.cpp
-        tests/test_flathashmap.cpp
+        tests/test_flatmap.cpp
         tests/test_mmap.cpp
         tests/test_logger.cpp
         tests/test_parser.cpp

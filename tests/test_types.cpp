@@ -14,11 +14,14 @@ TEST(Types, ToSideMapping) {
     EXPECT_EQ(to_side(static_cast<BuySellIndicator>('X')), Side::Sell);
 }
 
-TEST(Types, SideWireEncoding) {
-    // NOTE: in this codebase Side carries the wire values '0'/'1',
-    // unlike a 0/1 array index. Pinned to the actual definition.
-    EXPECT_EQ(std::to_underlying(Side::Buy), static_cast<std::uint8_t>('0'));
-    EXPECT_EQ(std::to_underlying(Side::Sell), static_cast<std::uint8_t>('1'));
+TEST(Types, SideValues) {
+    // Side is an internal 0/1 tag (NOT the wire 'B'/'S' byte): it indexes
+    // per-side arrays and sits inside the cache-line-sized Order struct.
+    EXPECT_EQ(std::to_underlying(Side::Buy), 0u);
+    EXPECT_EQ(std::to_underlying(Side::Sell), 1u);
+    // side_index maps Side onto a 2-element per-side array.
+    EXPECT_EQ(side_index(Side::Buy), 0u);
+    EXPECT_EQ(side_index(Side::Sell), 1u);
 }
 
 TEST(Types, CapacityConstants) {
@@ -44,7 +47,6 @@ TEST(Types, WireEnumValuesMatchSpec) {
     EXPECT_EQ(std::to_underlying(Printable::Yes), 'Y');
     EXPECT_EQ(std::to_underlying(CrossType::Closing), 'C');
     EXPECT_EQ(std::to_underlying(CrossType::Opening), 'O');
-    EXPECT_EQ(std::to_underlying(Side::Buy), '0');
 }
 
 } // namespace

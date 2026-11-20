@@ -8,10 +8,11 @@
 // * Per-message-type counts
 // * End to end wall clock time
 
-// All counters are plain uint16_t 
+// All counters are plain uint64_t (single-threaded parser, no atomics needed)
 
 #include "Types.hpp"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>

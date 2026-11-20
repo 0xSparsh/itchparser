@@ -155,91 +155,72 @@ public:
     }
 
 private:
+    // Entries formatted + written per drain pass. The scratch buffer holds
+    // one formatted line (up to sizeof(LogEntry) chars) per entry.
+    static constexpr std::size_t kBatch = 64;
+
+    // Format up to kBatch pending entries into scratch and write them out.
+    // Returns 0 when the ring is empty, else the number consumed.
+    std::size_t drain_batch(char* scratch) noexcept {
+        const std::size_t h = head_.load(std::memory_order_acquire);
+        const std::size_t t = tail_.load(std::memory_order_relaxed);
+
+        if (t == h) return 0;
+
+        const std::size_t count = std::min<std::size_t>(kBatch, h - t);
+
+        char* out = scratch;
+
+        for (std::size_t i = 0; i < count; ++i) {
+            const LogEntry& e = ring_[(t + i) & mask_];
+
+            int n = std::snprintf(
+                out,
+                sizeof(LogEntry),
+                "%020llu %s [%.*s] %.*s\n",
+                static_cast<unsigned long long>(e.timestamp_ns),
+                level_to_str(e.level),
+                6,
+                e.tag,
+                static_cast<int>(sizeof(LogEntry::message)),
+                e.message);
+
+            if (n <= 0) continue;
+
+            if (static_cast<std::size_t>(n) > sizeof(LogEntry))
+                n = static_cast<int>(sizeof(LogEntry));
+
+            out += n;
+        }
+
+        write_batch(scratch, static_cast<std::size_t>(out - scratch));
+
+        tail_.store(t + count, std::memory_order_release);
+        return count;
+    }
+
     void drain_loop() noexcept {
-        constexpr std::size_t kBatch = 64;
         std::array<char, sizeof(LogEntry) * kBatch> scratch{};
 
-        while (running_.load(std::memory_order_acquire)) {
-            const std::size_t h = head_.load(std::memory_order_acquire);
-            const std::size_t t = tail_.load(std::memory_order_relaxed);
+        // Consecutive empty polls; drives the idle sleep length so an idle
+        // logger costs a handful of wakeups per second instead of ~20k.
+        int idle_polls = 0;
 
-            if (t == h) {
-                std::this_thread::sleep_for(
-                    std::chrono::microseconds(50));
+        while (running_.load(std::memory_order_acquire)) {
+            if (drain_batch(scratch.data()) > 0) {
+                idle_polls = 0;   // work is flowing: stay at the fast cadence
                 continue;
             }
 
-            const std::size_t count =
-                std::min<std::size_t>(kBatch, h - t);
-
-            char* out = scratch.data();
-
-            for (std::size_t i = 0; i < count; ++i) {
-                const LogEntry& e = ring_[(t + i) & mask_];
-
-                int n = std::snprintf(
-                    out,
-                    sizeof(LogEntry),
-                    "%020llu %s [%.*s] %.*s\n",
-                    static_cast<unsigned long long>(e.timestamp_ns),
-                    level_to_str(e.level),
-                    6,
-                    e.tag,
-                    static_cast<int>(sizeof(LogEntry::message)),
-                    e.message);
-
-                if (n <= 0) continue;
-
-                if (static_cast<std::size_t>(n) > sizeof(LogEntry))
-                    n = static_cast<int>(sizeof(LogEntry));
-
-                out += n;
-            }
-
-            write_batch(scratch.data(),
-                        static_cast<std::size_t>(out - scratch.data()));
-
-            tail_.store(t + count, std::memory_order_release);
+            const auto nap = (idle_polls < 20)
+                ? std::chrono::microseconds(50)   // keep latency low when hot
+                : std::chrono::milliseconds(1);   // back off when idle
+            ++idle_polls;
+            std::this_thread::sleep_for(nap);
         }
 
-        while (true) {
-            const std::size_t h = head_.load(std::memory_order_acquire);
-            const std::size_t t = tail_.load(std::memory_order_relaxed);
-
-            if (t == h) break;
-
-            const std::size_t count =
-                std::min<std::size_t>(kBatch, h - t);
-
-            char* out = scratch.data();
-
-            for (std::size_t i = 0; i < count; ++i) {
-                const LogEntry& e = ring_[(t + i) & mask_];
-
-                int n = std::snprintf(
-                    out,
-                    sizeof(LogEntry),
-                    "%020llu %s [%.*s] %.*s\n",
-                    static_cast<unsigned long long>(e.timestamp_ns),
-                    level_to_str(e.level),
-                    6,
-                    e.tag,
-                    static_cast<int>(sizeof(LogEntry::message)),
-                    e.message);
-
-                if (n <= 0) continue;
-
-                if (static_cast<std::size_t>(n) > sizeof(LogEntry))
-                    n = static_cast<int>(sizeof(LogEntry));
-
-                out += n;
-            }
-
-            write_batch(scratch.data(),
-                        static_cast<std::size_t>(out - scratch.data()));
-
-            tail_.store(t + count, std::memory_order_release);
-        }
+        // Stop was requested: flush whatever is left in the ring.
+        while (drain_batch(scratch.data()) > 0) {}
     }
 
     void write_batch(const char* data, std::size_t size) noexcept {

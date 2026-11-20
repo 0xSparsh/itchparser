@@ -209,6 +209,48 @@ TEST(Engine, DeleteUnknownIdCounted) {
     EXPECT_EQ(t.engine.stats().order_delete, 0u);
 }
 
+// After the closing cross, NASDAQ keeps sending order events for the
+// cross-cleared orders (post-close book cleanup). Those lookups miss by
+// design and must show up as post_close_events, not unknown_order_events.
+TEST(Engine, PostCloseCleanupCountedSeparately) {
+    TestEngine t;
+    reg(t, 1);
+    t.engine.on_add_order(1, 1001, BuySellIndicator::BuyOrder, 100, 15000, 1,
+                          spaces(), false);
+    t.engine.on_cross_trade(1, CrossType::Closing);
+    ASSERT_EQ(t.engine.stats().live_orders, 0u);
+
+    t.engine.on_order_delete(1, 1001);          // was cleared by the cross
+    EXPECT_EQ(t.engine.stats().post_close_events, 1u);
+    EXPECT_EQ(t.engine.stats().unknown_order_events, 0u);
+
+    t.engine.on_order_executed(1, 1001, 100, 9001);
+    EXPECT_EQ(t.engine.stats().post_close_events, 2u);
+
+    t.engine.on_order_cancel(1, 1001, 10);
+    EXPECT_EQ(t.engine.stats().post_close_events, 3u);
+
+    t.engine.on_order_replace(1, 1001, 5555, 10, 100, 2);
+    EXPECT_EQ(t.engine.stats().post_close_events, 4u);
+
+    // Unknown locates still count as genuine unknowns.
+    t.engine.on_order_delete(42, 1001);
+    EXPECT_EQ(t.engine.stats().unknown_order_events, 1u);
+}
+
+// Opening/halt crosses are informational: book untouched, lookups still hit.
+TEST(Engine, OpeningCrossDoesNotMarkPostClose) {
+    TestEngine t;
+    reg(t, 1);
+    t.engine.on_add_order(1, 1001, BuySellIndicator::BuyOrder, 100, 15000, 1,
+                          spaces(), false);
+    t.engine.on_cross_trade(1, CrossType::Opening);
+    t.engine.on_order_delete(1, 1001);   // order still live - normal remove
+    EXPECT_EQ(t.engine.stats().post_close_events, 0u);
+    EXPECT_EQ(t.engine.stats().unknown_order_events, 0u);
+    EXPECT_EQ(t.engine.stats().order_delete, 1u);
+}
+
 TEST(Engine, LocateMismatchSelfHealsToHomeLocate) {
     TestEngine t;
     reg(t, 1);

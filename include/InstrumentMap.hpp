@@ -38,6 +38,12 @@ struct Instrument {
     TradingState                tradingState{TradingState::Halted};
     RegSHOAction                regSHOAction{RegSHOAction::NoPriceTest};
 
+    // Set once a closing cross cleared this instrument's book. NASDAQ keeps
+    // sending order events for cross-cleared orders afterwards (post-close
+    // book cleanup), so lookups that miss on this instrument are expected
+    // and counted separately from genuine unknown-order events.
+    bool                        post_close{false};
+
     // Created only when the instrument receives its first order
     std::unique_ptr<OrderBook> book;
 

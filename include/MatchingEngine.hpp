@@ -17,11 +17,10 @@
 #include "Types.hpp"
 
 #include <cstdint>
-#include <cstring>
-#include <string>
-#include <string_view>
 #include <unordered_map>
 #include <vector>
+
+#include <sys/mman.h>
 
 namespace itch {
 
@@ -38,17 +37,53 @@ namespace itch {
 //
 // insert / find / erase check the array first, then the overflow. Overflow
 // traffic is cold-path only (collisions and unknown-order lookups).
-
+//
+// The slot array is reserved with mmap(MAP_NORESERVE) instead of a
+// std::vector: a fresh anonymous page reads as zero (nullptr) through the
+// kernel's shared zero page without committing memory, so an empty index
+// costs no RSS; the first write to a slot faults in one 4 KiB page (512
+// pointers) at a time.
 class DirectOrderIndex {
 public:
     static constexpr std::size_t kCapacity = 1u << 25;      // 2^25
     static constexpr std::size_t kMask     = kCapacity - 1;
 
-    DirectOrderIndex() : slots_(kCapacity, nullptr) {
+    DirectOrderIndex() {
+        const std::size_t bytes = page_round(kCapacity * sizeof(Order*));
+        void* p = ::mmap(nullptr, bytes,
+                         PROT_READ | PROT_WRITE,
+                         MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE,
+                         -1, 0);
+        if (p == MAP_FAILED) {
+            // Stay functional: every find misses and every insert reports
+            // failure, which the engine surfaces through its reject
+            // counters instead of crashing.
+            slots_ = nullptr;
+            return;
+        }
+        slots_ = static_cast<Order**>(p);
+        map_bytes_ = bytes;
+#ifdef MADV_HUGEPAGE
+        // Best effort: when THP is in `madvise` mode this turns the
+        // first-touch fault cost into one fault per 2 MiB instead of per
+        // 4 KiB (512x fewer faults while the index warms up). A no-op
+        // anywhere else; failure is never fatal.
+        ::madvise(p, bytes, MADV_HUGEPAGE);
+#endif
         overflow_.reserve(1024);
     }
 
+    ~DirectOrderIndex() {
+        if (slots_ != nullptr) {
+            ::munmap(slots_, map_bytes_);
+        }
+    }
+
+    DirectOrderIndex(const DirectOrderIndex&) = delete;
+    DirectOrderIndex& operator=(const DirectOrderIndex&) = delete;
+
     bool insert(OrderReferenceNumber id, Order* o) {
+        if (slots_ == nullptr) [[unlikely]] return false;
         Order*& slot = slots_[id & kMask];
         if (slot == nullptr) [[likely]] {
             slot = o;
@@ -70,8 +105,15 @@ public:
     // Fast path: one array load + compare
     // miss falls through to overflow
     [[nodiscard]] Order* find(OrderReferenceNumber id) const noexcept {
-        Order* o = slots_[id & kMask];
-        if (o && o->order_id == id) [[likely]] return o;
+        if (slots_ != nullptr) [[likely]] {
+            Order* o = slots_[id & kMask];
+            if (o && o->order_id == id) [[likely]] return o;
+        }
+        // Cheap guard on the common "no collisions yet" case: skips the
+        // hash + bucket walk of the overflow map entirely, and keeps the
+        // whole check inline even when the compiler's inlining budget
+        // pushes _Hashtable::find out of line.
+        if (overflow_.empty()) [[likely]] return nullptr;
         auto it = overflow_.find(id);
         if (it != overflow_.end()) return it->second;
         return nullptr;
@@ -79,12 +121,15 @@ public:
 
     // returns true if the id was present and removed
     bool erase(OrderReferenceNumber id) noexcept {
-        Order*& slot = slots_[id & kMask];
-        if (slot && slot->order_id == id) [[likely]] {
-            slot = nullptr;
-            --count_;
-            return true;
+        if (slots_ != nullptr) [[likely]] {
+            Order*& slot = slots_[id & kMask];
+            if (slot && slot->order_id == id) [[likely]] {
+                slot = nullptr;
+                --count_;
+                return true;
+            }
         }
+        if (overflow_.empty()) [[likely]] return false;
         auto it = overflow_.find(id);
         if (it != overflow_.end()) {
             overflow_.erase(it);
@@ -94,8 +139,18 @@ public:
         return false;
     }
 
+    // Reset to empty. Unmaps and re-reserves the slot array so the
+    // process gives the pages it touched back to the kernel (a plain
+    // memset would instead fault in all 256 MiB of slots).
     void clear() noexcept {
-        std::fill(slots_.begin(), slots_.end(), nullptr);
+        if (slots_ != nullptr) {
+            ::munmap(slots_, map_bytes_);
+            void* p = ::mmap(nullptr, map_bytes_,
+                             PROT_READ | PROT_WRITE,
+                             MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE,
+                             -1, 0);
+            slots_ = (p == MAP_FAILED) ? nullptr : static_cast<Order**>(p);
+        }
         overflow_.clear();
         count_ = 0;
     }
@@ -106,8 +161,15 @@ public:
     static constexpr std::size_t capacity() noexcept { return kCapacity; }
 
 private:
-    // Heap allocated so construction does not blow the stack
-    std::vector<Order*> slots_;
+    // Round a byte count up to a whole page (mmap granularity).
+    static std::size_t page_round(std::size_t bytes) noexcept {
+        constexpr std::size_t kPage = 4096;
+        return (bytes + kPage - 1) & ~(kPage - 1);
+    }
+
+    // Reserved, lazily-resident slot array (nullptr if reservation failed).
+    Order** slots_ = nullptr;
+    std::size_t map_bytes_ = 0;
     std::unordered_map<OrderReferenceNumber, Order*> overflow_;
     std::size_t count_{0};
     std::uint64_t collisions_{0};
@@ -140,6 +202,10 @@ struct EngineStats {
     std::uint64_t locate_mismatches{0};
     std::uint64_t level_missing{0};
     std::uint64_t unknown_order_events{0};
+    // E/X/D/U lookups for orders already cleared by the closing cross.
+    // NASDAQ streams these post-close cleanup events until ~20:00; they are
+    // expected, not errors (see README, "Post-close cleanup events").
+    std::uint64_t post_close_events{0};
 
     // Pool / index lifecycle
     std::uint64_t live_orders{0};
@@ -271,30 +337,7 @@ public:
     // Order Executed ('E') - partial or full fill
     void on_order_executed(StockLocate locate, OrderReferenceNumber id,
                            Shares exec_qty, MatchNumber /*match*/) {
-        Order* o = order_index_.find(id);
-        if (!o) [[unlikely]] { ++stats_.unknown_order_events; return; }
-        if (o->locate != locate) [[unlikely]] {
-            ++stats_.locate_mismatches;
-            locate = o->locate;
-        }
-
-        Instrument* inst = instruments_[locate];
-        if (!inst || !inst->book) [[unlikely]] { ++stats_.unknown_order_events; return; }
-        OrderBook& book = *inst->book;
-
-        const int rc = book.execute_order(o, exec_qty, level_pool_);
-        if (rc < 0) [[unlikely]] {
-            ++stats_.level_missing;
-            ++stats_.unknown_order_events;
-            return;
-        }
-        ++stats_.order_executed;
-        if (rc > 0) {
-            order_index_.erase(id);
-            order_pool_.release(o);
-            if (stats_.live_orders > 0) --stats_.live_orders;
-            if (rc == 2 && stats_.live_levels > 0) --stats_.live_levels;
-        }
+        apply_fill(locate, id, exec_qty, stats_.order_executed);
     }
 
     // Order Executed With Price ('C')
@@ -305,65 +348,19 @@ public:
                                       MatchNumber /*match*/,
                                       Printable /*printable*/,
                                       ExecutionPrice /*exec_px*/) {
-        Order* o = order_index_.find(id);
-        if (!o) [[unlikely]] { ++stats_.unknown_order_events; return; }
-        if (o->locate != locate) [[unlikely]] {
-            ++stats_.locate_mismatches;
-            locate = o->locate;
-        }
-
-        Instrument* inst = instruments_[locate];
-        if (!inst || !inst->book) [[unlikely]] { ++stats_.unknown_order_events; return; }
-        OrderBook& book = *inst->book;
-
-        const int rc = book.execute_order(o, exec_qty, level_pool_);
-        if (rc < 0) [[unlikely]] {
-            ++stats_.level_missing;
-            ++stats_.unknown_order_events;
-            return;
-        }
-        ++stats_.order_executed_with_price;
-        if (rc > 0) {
-            order_index_.erase(id);
-            order_pool_.release(o);
-            if (stats_.live_orders > 0) --stats_.live_orders;
-            if (rc == 2 && stats_.live_levels > 0) --stats_.live_levels;
-        }
+        apply_fill(locate, id, exec_qty, stats_.order_executed_with_price);
     }
 
     // Order Cancel ('X') - partial cancel
     void on_order_cancel(StockLocate locate, OrderReferenceNumber id,
                          Shares cancelled_qty) {
-        Order* o = order_index_.find(id);
-        if (!o) [[unlikely]] { ++stats_.unknown_order_events; return; }
-        if (o->locate != locate) [[unlikely]] {
-            ++stats_.locate_mismatches;
-            locate = o->locate;
-        }
-
-        Instrument* inst = instruments_[locate];
-        if (!inst || !inst->book) [[unlikely]] { ++stats_.unknown_order_events; return; }
-        OrderBook& book = *inst->book;
-
-        const int rc = book.cancel_order(o, cancelled_qty, level_pool_);
-        if (rc < 0) [[unlikely]] {
-            ++stats_.level_missing;
-            ++stats_.unknown_order_events;
-            return;
-        }
-        ++stats_.order_cancel;
-        if (rc > 0) {
-            order_index_.erase(id);
-            order_pool_.release(o);
-            if (stats_.live_orders > 0) --stats_.live_orders;
-            if (rc == 2 && stats_.live_levels > 0) --stats_.live_levels;
-        }
+        apply_fill(locate, id, cancelled_qty, stats_.order_cancel);
     }
 
     // Order Delete ('D') - full removal
     void on_order_delete(StockLocate locate, OrderReferenceNumber id) {
         Order* o = order_index_.find(id);
-        if (!o) [[unlikely]] { ++stats_.unknown_order_events; return; }
+        if (!o) [[unlikely]] { count_missed_lookup(locate); return; }
         if (o->locate != locate) [[unlikely]] {
             ++stats_.locate_mismatches;
             locate = o->locate;
@@ -395,7 +392,7 @@ public:
                           Shares new_qty, Price new_px,
                           Timestamp ts) {
         Order* old = order_index_.find(old_id);
-        if (!old) [[unlikely]] { ++stats_.unknown_order_events; return; }
+        if (!old) [[unlikely]] { count_missed_lookup(locate); return; }
         StockLocate home = old->locate;
         if (home != locate) [[unlikely]] {
             ++stats_.locate_mismatches;
@@ -476,22 +473,26 @@ public:
         if (xtype != CrossType::Closing) return;
 
         Instrument* inst = instruments_[locate];
-        if (!inst || !inst->book) [[unlikely]] return;
+        if (!inst) [[unlikely]] return;
+
+        // From here on, events for this instrument reference orders the
+        // cross removed - route their misses to post_close_events.
+        inst->post_close = true;
+        if (!inst->book) return;
         OrderBook& book = *inst->book;
 
         const std::size_t book_levels = book.live_levels();
 
-        thread_local std::vector<Order*> snapshot;
-        snapshot.clear();
+        cross_snapshot_.clear();
         book.for_each_order([&](Order* o) {
-            snapshot.push_back(o);
+            cross_snapshot_.push_back(o);
         });
-        for (Order* o : snapshot) {
+        for (Order* o : cross_snapshot_) {
             order_index_.erase(o->order_id);
             order_pool_.release(o);
         }
-        if (stats_.live_orders >= snapshot.size()) {
-            stats_.live_orders -= snapshot.size();
+        if (stats_.live_orders >= cross_snapshot_.size()) {
+            stats_.live_orders -= cross_snapshot_.size();
         } else {
             stats_.live_orders = 0;
         }
@@ -520,6 +521,14 @@ public:
     [[nodiscard]] std::size_t order_pool_capacity() const noexcept {
         return order_pool_.capacity();
     }
+    // Lazily-resident extent of each pool (slots ever handed out by the
+    // bump region). With recycling this stays near the peak live count.
+    [[nodiscard]] std::size_t order_pool_resident() const noexcept {
+        return order_pool_.resident_slots();
+    }
+    [[nodiscard]] std::size_t level_pool_resident() const noexcept {
+        return level_pool_.resident_slots();
+    }
     [[nodiscard]] std::size_t level_pool_capacity() const noexcept {
         return level_pool_.capacity();
     }
@@ -537,12 +546,63 @@ public:
     }
 
 private:
+    // Shared mechanics for 'E' (execute), 'C' (execute-with-price) and 'X'
+    // (partial cancel): resolve the order by id, redirect a mismatched
+    // locate to the order's home instrument, apply the quantity change, and
+    // recycle the order when it fully dies. `accepted` receives the
+    // per-message-type counter so each caller keeps its own stats row.
+    // A lookup missed because the order is not live. If this instrument
+    // already went through its closing cross, the miss is NASDAQ's post-
+    // close book cleanup referencing a cross-cleared order - expected, and
+    // counted separately so the unknown-order row stays a true anomaly
+    // signal.
+    void count_missed_lookup(StockLocate locate) {
+        const Instrument* inst = instruments_[locate];
+        if (inst && inst->post_close) [[likely]] {
+            ++stats_.post_close_events;
+        } else {
+            ++stats_.unknown_order_events;
+        }
+    }
+
+    void apply_fill(StockLocate locate, OrderReferenceNumber id,
+                    Shares qty, std::uint64_t& accepted) {
+        Order* o = order_index_.find(id);
+        if (!o) [[unlikely]] { count_missed_lookup(locate); return; }
+        if (o->locate != locate) [[unlikely]] {
+            ++stats_.locate_mismatches;
+            locate = o->locate;
+        }
+
+        Instrument* inst = instruments_[locate];
+        if (!inst || !inst->book) [[unlikely]] { ++stats_.unknown_order_events; return; }
+        OrderBook& book = *inst->book;
+
+        const int rc = book.execute_order(o, qty, level_pool_);
+        if (rc < 0) [[unlikely]] {
+            ++stats_.level_missing;
+            ++stats_.unknown_order_events;
+            return;
+        }
+        ++accepted;
+        if (rc > 0) {
+            order_index_.erase(id);
+            order_pool_.release(o);
+            if (stats_.live_orders > 0) --stats_.live_orders;
+            if (rc == 2 && stats_.live_levels > 0) --stats_.live_levels;
+        }
+    }
+
     LockFreeLogger&         logger_;
     InstrumentMap           instruments_;
     MemoryPool<Order>       order_pool_;
     MemoryPool<PriceLevel>  level_pool_;
     DirectOrderIndex        order_index_;
     EngineStats             stats_{};
+
+    // Scratch buffer for the closing-cross drain, kept as a member so the
+    // per-cross snapshot does not re-allocate (engine is single-threaded).
+    std::vector<Order*>     cross_snapshot_;
 };
 
 } // namespace itch

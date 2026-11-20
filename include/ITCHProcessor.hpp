@@ -8,21 +8,24 @@
 #include "Types.hpp"
 
 #include <cstdio>
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
-#include <memory>
 #include <print>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace itch {
 
 class ITCHProcessor {
 public:
-    explicit ITCHProcessor(std::string_view log_path = "itch.log")
+    explicit ITCHProcessor(std::string_view log_path = "itch.log",
+                           std::size_t order_pool_size = kOrderPoolSize,
+                           std::size_t level_pool_size = kPriceLevelPoolSize)
         : log_path_(log_path)
         , logger_(log_path_.c_str())
-        , engine_(logger_)
+        , engine_(logger_, order_pool_size, level_pool_size)
     {}
 
     ~ITCHProcessor() { logger_.stop(); }
@@ -30,6 +33,9 @@ public:
     ITCHProcessor(const ITCHProcessor&) = delete;
     ITCHProcessor& operator=(const ITCHProcessor&) = delete;
 
+    // mmap the file, parse every message in a single pass, then print the
+    // parse report and the matching-engine report. Returns false only when
+    // the file could not be opened or mapped.
     bool run(const std::string& path) {
         auto mapped = MMapFile::open(path.c_str());
         if (!mapped) {
@@ -43,17 +49,25 @@ public:
 
         logger_.start();
 
-        std::println(stderr, "[ITCHProcessor] parsing {} MiB fron {}...",
+        std::println(stderr, "[ITCHProcessor] parsing {} MiB from {}...",
                      mmap.size() / (1024 * 1024), path);
+        std::fflush(stderr);
+
         stats_.reset();
         Parser parser;
         parser.run(mmap.data(), mmap.size(), engine_, stats_);
         stats_.finish();
-        
+
         logger_.stop();
 
+        std::println(stderr, "[ITCHProcessor] parse complete. Generating reports...");
+        std::fflush(stderr);
+
         stats_.print_report(stdout);
+        std::fflush(stdout);
+
         print_engine_report(stdout);
+        std::fflush(stdout);
 
         return true;
     }
@@ -97,11 +111,13 @@ private:
             "  Locate mismatch (E/X/D/U vs home)             : {}\n"
             "  Level missing (order found, level gone)       : {}\n"
             "  Unknown-order events (E/X/D/U on missing id)  : {}\n"
+            "  Post-close cleanup events (cross-cleared)     : {}\n"
             "  Total pool-exhausted events                   : {}\n"
             "\n"
             "  ---- Pool lifecycle diagnostics ----\n"
             "  Order pool      : {:10} / {:10} free  (peak live: {})\n"
             "  Level pool      : {:10} / {:10} free  (peak live: {})\n"
+            "  Pool residency  : order {:>10} slots (~{} MiB), level {:>10} slots (~{} MiB)\n"
             "  Live orders now : {}   (should be ~0 after end-of-day cross)\n"
             "  Live levels now : {}\n"
             "  Order index     : {} live / {} slots  (overflow: {}, collisions: {})\n"
@@ -127,12 +143,17 @@ private:
             es.locate_mismatches,
             es.level_missing,
             es.unknown_order_events,
+            es.post_close_events,
             es.pool_exhausted,
 
             op_free, op_cap,
             es.peak_live_orders,
             lp_free, lp_cap,
             es.peak_live_levels,
+            engine_.order_pool_resident(),
+            (engine_.order_pool_resident() * sizeof(itch::Order)) >> 20,
+            engine_.level_pool_resident(),
+            (engine_.level_pool_resident() * sizeof(itch::PriceLevel)) >> 20,
             es.live_orders,
             es.live_levels,
             engine_.order_index_size(), engine_.order_index_capacity(),

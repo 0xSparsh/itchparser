@@ -1,5 +1,6 @@
 #pragma once
 
+#include "FlatMap.hpp"
 #include "MemoryPool.hpp"
 #include "Types.hpp"
 #include "PriceLevel.hpp"
@@ -27,7 +28,7 @@ public:
         const Side  s  = o->side;
         const Price px = o->price_cents;
 
-        PriceLevel* lvl = static_cast<PriceLevel*>(find_level(s, px));
+        PriceLevel* lvl = find_level(s, px);
         bool created = false;
         if (!lvl) [[unlikely]] {
             lvl = level_pool.acquire();
@@ -52,6 +53,8 @@ public:
     //         0 if partially filled (order still live),
     //         1 if fully filled and the level remains,
     //         2 if fully filled and the level was removed.
+    // Cancel ('X') shares this exact path: a cancel is just a fill the
+    // matching engine applies without a counterparty.
     int execute_order(Order* o, Shares qty,
                       MemoryPool<PriceLevel>& level_pool) noexcept {
         PriceLevel* lvl = o->level_;        // direct - no hash lookup
@@ -75,12 +78,6 @@ public:
         }
 
         return 1;
-    }
-
-    // Cancel uses the same logic as execute.
-    int cancel_order(Order* o, Shares qty,
-                     MemoryPool<PriceLevel>& level_pool) noexcept {
-        return execute_order(o, qty, level_pool);
     }
 
     // Remove an order completely.
@@ -170,10 +167,6 @@ public:
         reset_metadata();
     }
 
-    void clear_and_release(MemoryPool<PriceLevel>& level_pool) noexcept {
-        clear_levels(level_pool);
-    }
-
     void reset_metadata() noexcept {
         best_bid_  = nullptr;
         best_ask_  = nullptr;
@@ -186,7 +179,7 @@ public:
 
 private:
     // Only the ADD path needs a price->level lookup now.
-    [[nodiscard]] void* find_level(Side s, Price px) const noexcept {
+    [[nodiscard]] PriceLevel* find_level(Side s, Price px) const noexcept {
         return (s == Side::Buy) ? bid_map_.find(px) : ask_map_.find(px);
     }
 

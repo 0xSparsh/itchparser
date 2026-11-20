@@ -7,6 +7,8 @@
 
 namespace itch {
 
+struct PriceLevel;  // forward declaration - back-pointer only
+
 struct alignas(kCacheLineSize) Order {
     OrderReferenceNumber order_id;
     StockLocate          locate;
@@ -21,6 +23,11 @@ struct alignas(kCacheLineSize) Order {
     Order* next_;
     Order* prev_;
 
+    // The level this order currently rests in. Maintained by
+    // PriceLevel::push_back / unlink; lets Execute/Cancel/Delete reach the
+    // level directly instead of going through the price -> level map.
+    PriceLevel* level_;
+
     Order (OrderReferenceNumber id, StockLocate loc, Price px,
            Shares qty, Side s, Timestamp ts, MPID attribution) noexcept
         : order_id(id)
@@ -32,6 +39,7 @@ struct alignas(kCacheLineSize) Order {
         , mpid(attribution)
         , next_(nullptr)
         , prev_(nullptr)
+        , level_(nullptr)
     {}
 
     Order() noexcept = default;
@@ -52,9 +60,11 @@ struct alignas(kCacheLineSize) Order {
     }
 };
 
-static_assert(sizeof(Order) <= kCacheLineSize,
-              "Order must fit in a cache line to avoid false sharing.");
-    
+static_assert(sizeof(Order) == kCacheLineSize,
+              "Order must exactly fill one cache line (64 bytes): "
+              "id(8)+locate(2)+pad(2)+price(4)+shares(4)+side(1)+pad(3)+"
+              "ts(8)+mpid(4)+pad(4)+next(8)+prev(8)+level(8) == 64");
+
 static_assert(std::is_trivially_copyable_v<Order>,
               "Must be trivially copyable because MemoryPool is just raw bytes.");
 

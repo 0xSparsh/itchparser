@@ -6,13 +6,8 @@
 #include "MatchingEngine.hpp"
 #include "Stats.hpp"
 
-#include <chrono>
-#include <vector>
 #include <cstdint>
-#include <cstring>
 #include <expected>
-#include <span>
-#include <string_view>
 
 namespace itch {
 
@@ -28,13 +23,11 @@ public:
     Parser() noexcept = default;
 
     std::size_t run(const std::byte* buf, std::size_t len,
-                    BookBuilder& engine, Stats& stats,
-                    std::size_t max_messages = static_cast<std::size_t>(-1)) {
+                    MatchingEngine& engine, Stats& stats) {
         const std::byte* p   = buf;
         const std::byte* end = buf + len;
-        std::size_t processed = 0;
 
-        while (p + 2 <= end && processed < max_messages) {
+        while (p + 2 <= end) {
             // Read 2-byte big-endian payload length
             const std::uint16_t payload_len = itch::load_be16(p);
             p += 2;
@@ -67,7 +60,6 @@ public:
 
             // ---- 6. Advance past the payload ----
             p += payload_len;
-            ++processed;
         }
 
         return static_cast<std::size_t>(p - buf);
@@ -92,7 +84,7 @@ private:
     // learns the message type distribution at run time 
     static void dispatch(char type, const std::byte* payload,
                          std::uint16_t payload_len,
-                         BookBuilder& engine, Stats& stats) {
+                         MatchingEngine& engine, Stats& stats) {
         stats.on_message(type, payload_len);
 
         switch (type) {
@@ -130,7 +122,7 @@ private:
     }
 
     static void handle_system_event(const std::byte* p, std::uint16_t len,
-                                    BookBuilder& engine, Stats& stats) {
+                                    MatchingEngine& engine, Stats& stats) {
         (void)engine;
         auto m = checked_cast<wire::SystemEventMsg>(p, len);
         if (!m) { stats.on_truncated(); return; }
@@ -140,7 +132,7 @@ private:
     }
 
     static void handle_stock_directory(const std::byte* p, std::uint16_t len,
-                                       BookBuilder& engine, Stats& stats) {
+                                       MatchingEngine& engine, Stats& stats) {
         auto m = checked_cast<wire::StockDirectoryMsg>(p, len);
         if (!m) { stats.on_truncated(); return; }
         engine.on_stock_directory(
@@ -160,7 +152,7 @@ private:
     }
 
     static void handle_stock_trading_action(const std::byte* p, std::uint16_t len,
-                                            BookBuilder& engine, Stats& stats) {
+                                            MatchingEngine& engine, Stats& stats) {
         auto m = checked_cast<wire::StockTradingActionMsg>(p, len);
         if (!m) { stats.on_truncated(); return; }
         engine.on_trading_action(
@@ -171,7 +163,7 @@ private:
     }
 
     static void handle_reg_sho(const std::byte* p, std::uint16_t len,
-                               BookBuilder& engine, Stats& stats) {
+                               MatchingEngine& engine, Stats& stats) {
         auto m = checked_cast<wire::RegSHOMsg>(p, len);
         if (!m) { stats.on_truncated(); return; }
         engine.on_reg_sho(
@@ -180,7 +172,7 @@ private:
     }
 
     static void handle_market_participant(const std::byte* p, std::uint16_t len,
-                                          BookBuilder& engine, Stats& stats) {
+                                          MatchingEngine& engine, Stats& stats) {
         (void)engine;
         auto m = checked_cast<wire::MarketParticipantPositionMsg>(p, len);
         if (!m) { stats.on_truncated(); return; }
@@ -189,7 +181,7 @@ private:
     }
 
     static void handle_mwcb_decline(const std::byte* p, std::uint16_t len,
-                                    BookBuilder& engine, Stats& stats) {
+                                    MatchingEngine& engine, Stats& stats) {
         (void)engine;
         auto m = checked_cast<wire::MWCBDeclineLevelMsg>(p, len);
         if (!m) { stats.on_truncated(); return; }
@@ -197,7 +189,7 @@ private:
     }
 
     static void handle_mwcb_status(const std::byte* p, std::uint16_t len,
-                                   BookBuilder& engine, Stats& stats) {
+                                   MatchingEngine& engine, Stats& stats) {
         (void)engine;
         auto m = checked_cast<wire::MWCBStatusMsg>(p, len);
         if (!m) { stats.on_truncated(); return; }
@@ -205,7 +197,7 @@ private:
     }
 
     static void handle_ipo_quoting_period(const std::byte* p, std::uint16_t len,
-                                          BookBuilder& engine, Stats& stats) {
+                                          MatchingEngine& engine, Stats& stats) {
         (void)engine;
         auto m = checked_cast<wire::IPOQuotingPeriodUpdateMsg>(p, len);
         if (!m) { stats.on_truncated(); return; }
@@ -213,7 +205,7 @@ private:
     }
 
     static void handle_luld_auction_collar(const std::byte* p, std::uint16_t len,
-                                           BookBuilder& engine, Stats& stats) {
+                                           MatchingEngine& engine, Stats& stats) {
         (void)engine;
         auto m = checked_cast<wire::LULDAuctionCollarMsg>(p, len);
         if (!m) { stats.on_truncated(); return; }
@@ -221,7 +213,7 @@ private:
     }
 
     static void handle_operational_halt(const std::byte* p, std::uint16_t len,
-                                        BookBuilder& engine, Stats& stats) {
+                                        MatchingEngine& engine, Stats& stats) {
         (void)engine;
         auto m = checked_cast<wire::OperationalHaltMsg>(p, len);
         if (!m) { stats.on_truncated(); return; }
@@ -233,7 +225,7 @@ private:
     // populate the MPID field on the resulting Order struct.
 
     static void handle_add_order(const std::byte* p, std::uint16_t len,
-                                 BookBuilder& engine, Stats& stats, bool attributed) {
+                                 MatchingEngine& engine, Stats& stats, bool attributed) {
         if (attributed) {
             auto m = checked_cast<wire::AddOrderMPIDMsg>(p, len);
             if (!m) { stats.on_truncated(); return; }
@@ -265,7 +257,7 @@ private:
     }
 
     static void handle_order_executed(const std::byte* p, std::uint16_t len,
-                                      BookBuilder& engine, Stats& stats) {
+                                      MatchingEngine& engine, Stats& stats) {
         auto m = checked_cast<wire::OrderExecutedMsg>(p, len);
         if (!m) { stats.on_truncated(); return; }
         engine.on_order_executed(
@@ -276,7 +268,7 @@ private:
     }
 
     static void handle_order_executed_price(const std::byte* p, std::uint16_t len,
-                                            BookBuilder& engine, Stats& stats) {
+                                            MatchingEngine& engine, Stats& stats) {
         auto m = checked_cast<wire::OrderExecutedWithPriceMsg>(p, len);
         if (!m) { stats.on_truncated(); return; }
         engine.on_order_executed_with_price(
@@ -289,7 +281,7 @@ private:
     }
 
     static void handle_order_cancel(const std::byte* p, std::uint16_t len,
-                                    BookBuilder& engine, Stats& stats) {
+                                    MatchingEngine& engine, Stats& stats) {
         auto m = checked_cast<wire::OrderCancelMsg>(p, len);
         if (!m) { stats.on_truncated(); return; }
         engine.on_order_cancel(
@@ -299,7 +291,7 @@ private:
     }
 
     static void handle_order_delete(const std::byte* p, std::uint16_t len,
-                                    BookBuilder& engine, Stats& stats) {
+                                    MatchingEngine& engine, Stats& stats) {
         auto m = checked_cast<wire::OrderDeleteMsg>(p, len);
         if (!m) { stats.on_truncated(); return; }
         engine.on_order_delete(
@@ -308,7 +300,7 @@ private:
     }
 
     static void handle_order_replace(const std::byte* p, std::uint16_t len,
-                                     BookBuilder& engine, Stats& stats) {
+                                     MatchingEngine& engine, Stats& stats) {
         auto m = checked_cast<wire::OrderReplaceMsg>(p, len);
         if (!m) { stats.on_truncated(); return; }
         engine.on_order_replace(
@@ -321,7 +313,7 @@ private:
     }
 
     static void handle_non_cross_trade(const std::byte* p, std::uint16_t len,
-                                       BookBuilder& engine, Stats& stats) {
+                                       MatchingEngine& engine, Stats& stats) {
         auto m = checked_cast<wire::NonCrossTradeMsg>(p, len);
         if (!m) { stats.on_truncated(); return; }
         engine.on_non_cross_trade(
@@ -332,7 +324,7 @@ private:
     }
 
     static void handle_cross_trade(const std::byte* p, std::uint16_t len,
-                                   BookBuilder& engine, Stats& stats) {
+                                   MatchingEngine& engine, Stats& stats) {
         auto m = checked_cast<wire::CrossTradeMsg>(p, len);
         if (!m) { stats.on_truncated(); return; }
         engine.on_cross_trade(
@@ -341,7 +333,7 @@ private:
     }
 
     static void handle_broken_trade(const std::byte* p, std::uint16_t len,
-                                    BookBuilder& engine, Stats& stats) {
+                                    MatchingEngine& engine, Stats& stats) {
         auto m = checked_cast<wire::BrokenTradeMsg>(p, len);
         if (!m) { stats.on_truncated(); return; }
         engine.on_broken_trade(
@@ -350,7 +342,7 @@ private:
     }
 
     static void handle_noii(const std::byte* p, std::uint16_t len,
-                            BookBuilder& engine, Stats& stats) {
+                            MatchingEngine& engine, Stats& stats) {
         (void)engine;
         auto m = checked_cast<wire::NOIIMsg>(p, len);
         if (!m) { stats.on_truncated(); return; }
@@ -359,7 +351,7 @@ private:
     }
 
     static void handle_rpii(const std::byte* p, std::uint16_t len,
-                            BookBuilder& engine, Stats& stats) {
+                            MatchingEngine& engine, Stats& stats) {
         (void)engine;
         auto m = checked_cast<wire::RetailPriceImprovementIndicatorMsg>(p, len);
         if (!m) { stats.on_truncated(); return; }
@@ -367,7 +359,7 @@ private:
     }
 
     static void handle_dlcr(const std::byte* p, std::uint16_t len,
-                            BookBuilder& engine, Stats& stats) {
+                            MatchingEngine& engine, Stats& stats) {
         (void)engine;
         auto m = checked_cast<wire::DLCRMsg>(p, len);
         if (!m) { stats.on_truncated(); return; }
